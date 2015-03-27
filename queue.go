@@ -16,8 +16,10 @@ import (
 	"github.com/tsuru/redisqueue/log"
 )
 
+var ErrQueueWaitTimeout = errors.New("timeout waiting for result")
+
 type Task interface {
-	Run(job *Job) error
+	Run(job *Job)
 	Name() string
 }
 
@@ -62,6 +64,66 @@ func (q *Queue) Enqueue(taskName string, params JobParams) (*Job, error) {
 	}
 	_, err = conn.Do("LPUSH", q.enqueuedKey(), data)
 	return &j, err
+}
+
+func (q *Queue) receiveMessage(psc *redis.PubSubConn, key string) (chan []byte, error) {
+	err := psc.Subscribe(key)
+	if err != nil {
+		return nil, err
+	}
+	dataChan := make(chan []byte)
+	go func() {
+		defer close(dataChan)
+		defer psc.Unsubscribe(key)
+		defer psc.Close()
+		for {
+			switch v := psc.Receive().(type) {
+			case redis.Message:
+				dataChan <- v.Data
+				return
+			case error:
+				log.Errorf("Error receiving redis pub/sub message: %s", v.Error())
+				return
+			}
+		}
+	}()
+	return dataChan, nil
+}
+
+func (q *Queue) EnqueueWait(taskName string, params JobParams, timeout time.Duration) (JobResultMessage, *Job, error) {
+	var result JobResultMessage
+	j := Job{
+		Id:       randomString(),
+		TaskName: taskName,
+		Params:   params,
+		queue:    q,
+	}
+	pscConn, err := q.dial()
+	if err != nil {
+		return result, nil, err
+	}
+	psc := redis.PubSubConn{Conn: pscConn}
+	key := q.resultPubSubKey(j.Id)
+	resultChan, err := q.receiveMessage(&psc, key)
+	if err != nil {
+		return result, nil, err
+	}
+	data, err := j.Serialize()
+	if err != nil {
+		return result, nil, err
+	}
+	conn := q.pool.Get()
+	defer conn.Close()
+	_, err = conn.Do("LPUSH", q.enqueuedKey(), data)
+	select {
+	case resultData := <-resultChan:
+		result, err := NewJobResultFromRaw(resultData)
+		return result, &j, err
+	case <-time.After(timeout):
+		psc.Unsubscribe(key)
+		psc.Close()
+	}
+	return result, &j, ErrQueueWaitTimeout
 }
 
 func (q *Queue) ProcessLoop() {
@@ -118,24 +180,8 @@ func (q *Queue) waitForMessage() error {
 		q.moveToResult(&job, nil, err)
 		return err
 	}
-	go q.runTask(task, &job)
+	go task.Run(&job)
 	return nil
-}
-
-func (q *Queue) runTask(task Task, job *Job) {
-	runAndRecover := func() (err error) {
-		defer func() {
-			if r := recover(); r != nil {
-				err = fmt.Errorf("recovered panic: %v", r)
-			}
-		}()
-		err = task.Run(job)
-		return
-	}
-	err := runAndRecover()
-	if err != nil {
-		q.moveToResult(job, nil, err)
-	}
 }
 
 func (q *Queue) moveToResult(job *Job, result JobResult, jobErr error) ([]byte, error) {
@@ -191,6 +237,27 @@ func (q *Queue) resultPubSubKey(jobId string) string {
 	return q.key(fmt.Sprintf("result:%s", jobId))
 }
 
+func (q *Queue) dial() (redis.Conn, error) {
+	if q.config.Host == "" {
+		q.config.Host = "127.0.0.1"
+	}
+	if q.config.Port == 0 {
+		q.config.Port = 6379
+	}
+	conn, err := redis.Dial("tcp", fmt.Sprintf("%s:%d", q.config.Host, q.config.Port))
+	if err != nil {
+		return nil, err
+	}
+	if q.config.Password != "" {
+		_, err = conn.Do("AUTH", q.config.Password)
+		if err != nil {
+			return nil, err
+		}
+	}
+	_, err = conn.Do("SELECT", q.config.Db)
+	return conn, err
+}
+
 func NewQueue(conf QueueConfig) (*Queue, error) {
 	q := &Queue{
 		config: &conf,
@@ -200,28 +267,10 @@ func NewQueue(conf QueueConfig) (*Queue, error) {
 	q.pool = &redis.Pool{
 		MaxIdle:     conf.PoolMaxIdle,
 		IdleTimeout: conf.PoolIdleTimeout,
-		Dial: func() (redis.Conn, error) {
-			if conf.Host == "" {
-				conf.Host = "127.0.0.1"
-			}
-			if conf.Port == 0 {
-				conf.Port = 6379
-			}
-			conn, err := redis.Dial("tcp", fmt.Sprintf("%s:%d", conf.Host, conf.Port))
-			if err != nil {
-				return nil, err
-			}
-			if conf.Password != "" {
-				_, err = conn.Do("AUTH", conf.Password)
-				if err != nil {
-					return nil, err
-				}
-			}
-			_, err = conn.Do("SELECT", conf.Db)
-			return conn, err
-		},
+		Dial:        q.dial,
 	}
 	conn := q.pool.Get()
+	defer conn.Close()
 	_, err := conn.Do("PING")
 	return q, err
 }

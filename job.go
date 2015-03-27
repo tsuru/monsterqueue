@@ -47,8 +47,17 @@ func (m *JobResultMessage) Job() (Job, error) {
 	return NewJobFromRaw(m.RawJob)
 }
 
-func (j *Job) Ack(result JobResult) (bool, error) {
+func (j *Job) Success(result JobResult) (bool, error) {
 	resultData, err := j.queue.moveToResult(j, result, nil)
+	if err != nil {
+		return false, err
+	}
+	receivers, err := j.queue.publishResult(j.Id, resultData)
+	return receivers > 0, err
+}
+
+func (j *Job) Error(jobErr error) (bool, error) {
+	resultData, err := j.queue.moveToResult(j, nil, jobErr)
 	if err != nil {
 		return false, err
 	}
