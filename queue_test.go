@@ -2,23 +2,24 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package redisqueue
+package redisqueue_test
 
 import (
 	"errors"
 	"sync"
 	"time"
 
+	"github.com/tsuru/redisqueue"
 	"gopkg.in/check.v1"
 )
 
 type TestTask struct {
 	callCount int
 	acked     bool
-	params    JobParams
+	params    redisqueue.JobParams
 }
 
-func (t *TestTask) Run(j *Job) {
+func (t *TestTask) Run(j *redisqueue.Job) {
 	if j.Params["sleep"] != nil {
 		time.Sleep(1 * time.Second)
 	}
@@ -38,123 +39,125 @@ func (t *TestTask) Name() string {
 }
 
 func (s *S) TestQueueRegisterTask(c *check.C) {
-	queue, err := NewQueue(QueueConfig{KeyPrefix: redisKeyPrefix})
+	queue, err := redisqueue.NewQueue(redisqueue.QueueConfig{KeyPrefix: redisKeyPrefix})
 	c.Assert(err, check.IsNil)
 	task := &TestTask{}
 	err = queue.RegisterTask(task)
 	c.Assert(err, check.IsNil)
-	_, ok := queue.tasks["test-task"]
-	c.Assert(ok, check.Equals, true)
+	// _, ok := queue.tasks["test-task"]
+	// c.Assert(ok, check.Equals, true)
 }
 
 func (s *S) TestQueueEnqueueAndProcessManualWait(c *check.C) {
-	queue, err := NewQueue(QueueConfig{KeyPrefix: redisKeyPrefix})
+	queue, err := redisqueue.NewQueue(redisqueue.QueueConfig{KeyPrefix: redisKeyPrefix})
 	c.Assert(err, check.IsNil)
 	task := &TestTask{}
 	err = queue.RegisterTask(task)
 	c.Assert(err, check.IsNil)
-	job, err := queue.Enqueue("test-task", JobParams{"a": "b"})
+	job, err := queue.Enqueue("test-task", redisqueue.JobParams{"a": "b"})
 	c.Assert(err, check.IsNil)
 	queue.Stop()
 	queue.ProcessLoop()
 	waitFor(c, func() bool { return task.callCount > 0 })
 	c.Assert(task.callCount, check.Equals, 1)
-	c.Assert(task.params, check.DeepEquals, JobParams{"a": "b"})
+	c.Assert(task.params, check.DeepEquals, redisqueue.JobParams{"a": "b"})
 	c.Assert(task.acked, check.Equals, false)
-	result, err := queue.JobResult(job.Id)
+	job2, err := queue.RetrieveJob(job.Id)
 	c.Assert(err, check.IsNil)
-	c.Assert(result.Error, check.Equals, "")
-	c.Assert(result.Result, check.Equals, "my result")
-	jobFromResult, err := result.Job()
+	result, err := job2.Result()
 	c.Assert(err, check.IsNil)
-	c.Assert(jobFromResult.Id, check.Equals, job.Id)
-	c.Assert(jobFromResult.Params, check.DeepEquals, job.Params)
-	c.Assert(jobFromResult.TaskName, check.Equals, job.TaskName)
+	c.Assert(result, check.Equals, "my result")
+	c.Assert(job2.Id, check.Equals, job.Id)
+	c.Assert(job2.Params, check.DeepEquals, job.Params)
+	c.Assert(job2.TaskName, check.Equals, job.TaskName)
 }
 
 func (s *S) TestQueueEnqueueWaitAndProcess(c *check.C) {
-	queue, err := NewQueue(QueueConfig{KeyPrefix: redisKeyPrefix})
+	queue, err := redisqueue.NewQueue(redisqueue.QueueConfig{KeyPrefix: redisKeyPrefix})
 	c.Assert(err, check.IsNil)
 	task := &TestTask{}
 	err = queue.RegisterTask(task)
 	c.Assert(err, check.IsNil)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
-	var result JobResultMessage
+	var job *redisqueue.Job
 	go func() {
 		defer wg.Done()
 		var err error
-		var job *Job
-		result, job, err = queue.EnqueueWait("test-task", JobParams{"a": "b"}, 2*time.Second)
+		job, err = queue.EnqueueWait("test-task", redisqueue.JobParams{"a": "b"}, 2*time.Second)
 		c.Assert(err, check.IsNil)
-		c.Assert(job.TaskName, check.Equals, "test-task")
 	}()
 	queue.Stop()
 	queue.ProcessLoop()
 	wg.Wait()
-	c.Assert(result.Error, check.Equals, "")
-	c.Assert(result.Result, check.Equals, "my result")
+	c.Assert(job.TaskName, check.Equals, "test-task")
+	result, err := job.Result()
+	c.Assert(err, check.IsNil)
+	c.Assert(result, check.Equals, "my result")
 	waitFor(c, func() bool { return task.callCount > 0 })
 	c.Assert(task.callCount, check.Equals, 1)
-	c.Assert(task.params, check.DeepEquals, JobParams{"a": "b"})
+	c.Assert(task.params, check.DeepEquals, redisqueue.JobParams{"a": "b"})
 	c.Assert(task.acked, check.Equals, true)
-	jobFromResult, err := result.Job()
-	c.Assert(err, check.IsNil)
-	c.Assert(jobFromResult.Params, check.DeepEquals, JobParams{"a": "b"})
-	c.Assert(jobFromResult.TaskName, check.Equals, "test-task")
+	c.Assert(job.Params, check.DeepEquals, redisqueue.JobParams{"a": "b"})
+	c.Assert(job.TaskName, check.Equals, "test-task")
 }
 
 func (s *S) TestQueueEnqueueWaitTimeout(c *check.C) {
-	queue, err := NewQueue(QueueConfig{KeyPrefix: redisKeyPrefix})
+	queue, err := redisqueue.NewQueue(redisqueue.QueueConfig{KeyPrefix: redisKeyPrefix})
 	c.Assert(err, check.IsNil)
 	task := &TestTask{}
 	err = queue.RegisterTask(task)
 	c.Assert(err, check.IsNil)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
-	var job *Job
+	var job *redisqueue.Job
 	go func() {
 		defer wg.Done()
 		var err error
-		_, job, err = queue.EnqueueWait("test-task", JobParams{"sleep": true}, 500*time.Millisecond)
-		c.Assert(err, check.Equals, ErrQueueWaitTimeout)
+		job, err = queue.EnqueueWait("test-task", redisqueue.JobParams{"sleep": true}, 500*time.Millisecond)
+		c.Assert(err, check.Equals, redisqueue.ErrQueueWaitTimeout)
 	}()
 	queue.Stop()
 	queue.ProcessLoop()
 	wg.Wait()
+	c.Assert(job.TaskName, check.Equals, "test-task")
+	_, err = job.Result()
+	c.Assert(err, check.Equals, redisqueue.ErrNoJobResult)
 	waitFor(c, func() bool { return task.callCount > 0 })
 	c.Assert(task.callCount, check.Equals, 1)
-	c.Assert(task.params, check.DeepEquals, JobParams{"sleep": true})
+	c.Assert(task.params, check.DeepEquals, redisqueue.JobParams{"sleep": true})
 	c.Assert(task.acked, check.Equals, false)
-	result, err := queue.JobResult(job.Id)
+	job2, err := queue.RetrieveJob(job.Id)
 	c.Assert(err, check.IsNil)
-	c.Assert(result.Error, check.Equals, "")
-	c.Assert(result.Result, check.Equals, "my result")
+	result, err := job2.Result()
+	c.Assert(err, check.IsNil)
+	c.Assert(result, check.Equals, "my result")
 }
 
 func (s *S) TestQueueEnqueueWaitError(c *check.C) {
-	queue, err := NewQueue(QueueConfig{KeyPrefix: redisKeyPrefix})
+	queue, err := redisqueue.NewQueue(redisqueue.QueueConfig{KeyPrefix: redisKeyPrefix})
 	c.Assert(err, check.IsNil)
 	task := &TestTask{}
 	err = queue.RegisterTask(task)
 	c.Assert(err, check.IsNil)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
-	var result JobResultMessage
+	var job *redisqueue.Job
 	go func() {
 		defer wg.Done()
 		var err error
-		result, _, err = queue.EnqueueWait("test-task", JobParams{"err": "fear is the mind-killer"}, 2*time.Second)
+		job, err = queue.EnqueueWait("test-task", redisqueue.JobParams{"err": "fear is the mind-killer"}, 2*time.Second)
 		c.Assert(err, check.IsNil)
 	}()
 	queue.Stop()
 	queue.ProcessLoop()
 	wg.Wait()
-	c.Assert(result.Result, check.IsNil)
-	c.Assert(result.Error, check.Equals, "fear is the mind-killer")
+	result, err := job.Result()
+	c.Assert(result, check.IsNil)
+	c.Assert(err, check.ErrorMatches, "fear is the mind-killer")
 	waitFor(c, func() bool { return task.callCount > 0 })
 	c.Assert(task.callCount, check.Equals, 1)
-	c.Assert(task.params, check.DeepEquals, JobParams{"err": "fear is the mind-killer"})
+	c.Assert(task.params, check.DeepEquals, redisqueue.JobParams{"err": "fear is the mind-killer"})
 	c.Assert(task.acked, check.Equals, true)
 }
 

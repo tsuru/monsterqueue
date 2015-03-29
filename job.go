@@ -6,26 +6,30 @@ package redisqueue
 
 import (
 	"encoding/json"
+	"errors"
 )
+
+var ErrNoJobResult = errors.New("no result available")
 
 type JobParams map[string]interface{}
 type JobResult interface{}
 
-type JobResultMessage struct {
+type jobResultMessage struct {
 	RawJob []byte
 	Error  string
 	Result JobResult
 }
 
 type Job struct {
-	Id       string
-	TaskName string
-	Params   JobParams
-	rawJob   []byte
-	queue    *Queue
+	Id            string
+	TaskName      string
+	Params        JobParams
+	rawJob        []byte
+	queue         *Queue
+	resultMessage *jobResultMessage
 }
 
-func NewJobFromRaw(data []byte) (Job, error) {
+func newJobFromRaw(data []byte) (Job, error) {
 	job := Job{
 		rawJob: data,
 	}
@@ -33,18 +37,23 @@ func NewJobFromRaw(data []byte) (Job, error) {
 	return job, err
 }
 
-func NewJobResultFromRaw(data []byte) (JobResultMessage, error) {
-	var result JobResultMessage
+func newJobFromResultRaw(data []byte) (Job, error) {
+	var result jobResultMessage
 	err := json.Unmarshal(data, &result)
-	return result, err
+	if err != nil {
+		return Job{}, err
+	}
+	job, err := newJobFromRaw(result.RawJob)
+	job.resultMessage = &result
+	return job, err
 }
 
-func (m *JobResultMessage) Serialize() ([]byte, error) {
+func (m *jobResultMessage) Serialize() ([]byte, error) {
 	return json.Marshal(m)
 }
 
-func (m *JobResultMessage) Job() (Job, error) {
-	return NewJobFromRaw(m.RawJob)
+func (m *jobResultMessage) Job() (Job, error) {
+	return newJobFromRaw(m.RawJob)
 }
 
 func (j *Job) Success(result JobResult) (bool, error) {
@@ -67,4 +76,15 @@ func (j *Job) Error(jobErr error) (bool, error) {
 
 func (j *Job) Serialize() ([]byte, error) {
 	return json.Marshal(j)
+}
+
+func (j *Job) Result() (JobResult, error) {
+	if j.resultMessage == nil {
+		return nil, ErrNoJobResult
+	}
+	var err error
+	if j.resultMessage.Error != "" {
+		err = errors.New(j.resultMessage.Error)
+	}
+	return j.resultMessage.Result, err
 }

@@ -63,7 +63,76 @@ func (q *Queue) Enqueue(taskName string, params JobParams) (*Job, error) {
 		return nil, err
 	}
 	_, err = conn.Do("LPUSH", q.enqueuedKey(), data)
-	return &j, err
+	if err != nil {
+		return nil, err
+	}
+	return &j, nil
+}
+
+func (q *Queue) EnqueueWait(taskName string, params JobParams, timeout time.Duration) (*Job, error) {
+	j := Job{
+		Id:       randomString(),
+		TaskName: taskName,
+		Params:   params,
+		queue:    q,
+	}
+	pscConn, err := q.dial()
+	if err != nil {
+		return nil, err
+	}
+	psc := redis.PubSubConn{Conn: pscConn}
+	key := q.resultPubSubKey(j.Id)
+	resultChan, err := q.receiveMessage(&psc, key)
+	if err != nil {
+		return nil, err
+	}
+	data, err := j.Serialize()
+	if err != nil {
+		return nil, err
+	}
+	conn := q.pool.Get()
+	defer conn.Close()
+	_, err = conn.Do("LPUSH", q.enqueuedKey(), data)
+	select {
+	case resultData := <-resultChan:
+		j, err := newJobFromResultRaw(resultData)
+		return &j, err
+	case <-time.After(timeout):
+		psc.Unsubscribe(key)
+		psc.Close()
+	}
+	return &j, ErrQueueWaitTimeout
+}
+
+func (q *Queue) ProcessLoop() {
+	for {
+		err := q.waitForMessage()
+		if err != nil {
+			log.Debugf("error getting message from queue: %s", err.Error())
+		}
+		select {
+		case <-q.done:
+			return
+		}
+	}
+}
+
+func (q *Queue) Stop() {
+	close(q.done)
+}
+
+func (q *Queue) RetrieveJob(jobId string) (*Job, error) {
+	conn := q.pool.Get()
+	defer conn.Close()
+	rawResult, err := redis.Bytes(conn.Do("HGET", q.resultKey(), jobId))
+	if err != nil {
+		return nil, err
+	}
+	if len(rawResult) == 0 {
+		return nil, nil
+	}
+	job, err := newJobFromResultRaw(rawResult)
+	return &job, err
 }
 
 func (q *Queue) receiveMessage(psc *redis.PubSubConn, key string) (chan []byte, error) {
@@ -90,73 +159,6 @@ func (q *Queue) receiveMessage(psc *redis.PubSubConn, key string) (chan []byte, 
 	return dataChan, nil
 }
 
-func (q *Queue) EnqueueWait(taskName string, params JobParams, timeout time.Duration) (JobResultMessage, *Job, error) {
-	var result JobResultMessage
-	j := Job{
-		Id:       randomString(),
-		TaskName: taskName,
-		Params:   params,
-		queue:    q,
-	}
-	pscConn, err := q.dial()
-	if err != nil {
-		return result, nil, err
-	}
-	psc := redis.PubSubConn{Conn: pscConn}
-	key := q.resultPubSubKey(j.Id)
-	resultChan, err := q.receiveMessage(&psc, key)
-	if err != nil {
-		return result, nil, err
-	}
-	data, err := j.Serialize()
-	if err != nil {
-		return result, nil, err
-	}
-	conn := q.pool.Get()
-	defer conn.Close()
-	_, err = conn.Do("LPUSH", q.enqueuedKey(), data)
-	select {
-	case resultData := <-resultChan:
-		result, err := NewJobResultFromRaw(resultData)
-		return result, &j, err
-	case <-time.After(timeout):
-		psc.Unsubscribe(key)
-		psc.Close()
-	}
-	return result, &j, ErrQueueWaitTimeout
-}
-
-func (q *Queue) ProcessLoop() {
-	for {
-		err := q.waitForMessage()
-		if err != nil {
-			log.Debugf("error getting message from queue: %s", err.Error())
-		}
-		select {
-		case <-q.done:
-			return
-		}
-	}
-}
-
-func (q *Queue) Stop() {
-	close(q.done)
-}
-
-func (q *Queue) JobResult(jobId string) (JobResultMessage, error) {
-	conn := q.pool.Get()
-	defer conn.Close()
-	var result JobResultMessage
-	rawResult, err := redis.Bytes(conn.Do("HGET", q.resultKey(), jobId))
-	if err != nil {
-		return result, err
-	}
-	if len(rawResult) == 0 {
-		return result, nil
-	}
-	return NewJobResultFromRaw(rawResult)
-}
-
 func (q *Queue) waitForMessage() error {
 	conn := q.pool.Get()
 	defer conn.Close()
@@ -168,7 +170,7 @@ func (q *Queue) waitForMessage() error {
 	if err != nil {
 		return err
 	}
-	job, err := NewJobFromRaw(rawJob)
+	job, err := newJobFromRaw(rawJob)
 	job.queue = q
 	if err != nil {
 		q.moveToResult(&job, nil, err)
@@ -195,7 +197,7 @@ func (q *Queue) moveToResult(job *Job, result JobResult, jobErr error) ([]byte, 
 	if err != nil {
 		return nil, err
 	}
-	resultMsg := JobResultMessage{RawJob: job.rawJob, Result: result}
+	resultMsg := jobResultMessage{RawJob: job.rawJob, Result: result}
 	if jobErr != nil {
 		resultMsg.Error = jobErr.Error()
 	}
