@@ -164,6 +164,13 @@ func (q *Queue) Wait() {
 	q.wg.Wait()
 }
 
+func (q *Queue) ResetKeys() error {
+	conn := q.pool.Get()
+	defer conn.Close()
+	_, err := conn.Do("DEL", q.enqueuedKey(), q.resultKey(), q.runningKey())
+	return err
+}
+
 func (q *Queue) RetrieveJob(jobId string) (*Job, error) {
 	conn := q.pool.Get()
 	defer conn.Close()
