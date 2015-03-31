@@ -58,7 +58,7 @@ func (s *S) TestQueueEnqueueAndProcessManualWait(c *check.C) {
 	c.Assert(err, check.IsNil)
 	queue.Stop()
 	queue.ProcessLoop()
-	waitFor(c, func() bool { return task.callCount > 0 })
+	queue.Wait()
 	c.Assert(task.callCount, check.Equals, 1)
 	c.Assert(task.params, check.DeepEquals, redisqueue.JobParams{"a": "b"})
 	c.Assert(task.acked, check.Equals, false)
@@ -94,7 +94,7 @@ func (s *S) TestQueueEnqueueWaitAndProcess(c *check.C) {
 	result, err := job.Result()
 	c.Assert(err, check.IsNil)
 	c.Assert(result, check.Equals, "my result")
-	waitFor(c, func() bool { return task.callCount > 0 })
+	queue.Wait()
 	c.Assert(task.callCount, check.Equals, 1)
 	c.Assert(task.params, check.DeepEquals, redisqueue.JobParams{"a": "b"})
 	c.Assert(task.acked, check.Equals, true)
@@ -123,7 +123,7 @@ func (s *S) TestQueueEnqueueWaitTimeout(c *check.C) {
 	c.Assert(job.TaskName, check.Equals, "test-task")
 	_, err = job.Result()
 	c.Assert(err, check.Equals, redisqueue.ErrNoJobResult)
-	waitFor(c, func() bool { return task.callCount > 0 })
+	queue.Wait()
 	c.Assert(task.callCount, check.Equals, 1)
 	c.Assert(task.params, check.DeepEquals, redisqueue.JobParams{"sleep": true})
 	c.Assert(task.acked, check.Equals, false)
@@ -155,31 +155,8 @@ func (s *S) TestQueueEnqueueWaitError(c *check.C) {
 	result, err := job.Result()
 	c.Assert(result, check.IsNil)
 	c.Assert(err, check.ErrorMatches, "fear is the mind-killer")
-	waitFor(c, func() bool { return task.callCount > 0 })
+	queue.Wait()
 	c.Assert(task.callCount, check.Equals, 1)
 	c.Assert(task.params, check.DeepEquals, redisqueue.JobParams{"err": "fear is the mind-killer"})
 	c.Assert(task.acked, check.Equals, true)
-}
-
-func waitFor(c *check.C, fn func() bool) {
-	done := make(chan bool)
-	go func() {
-		for range time.Tick(100 * time.Millisecond) {
-			select {
-			case <-done:
-				return
-			default:
-			}
-			if fn() {
-				close(done)
-				return
-			}
-		}
-	}()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		defer close(done)
-		c.Fatal("Timed out.")
-	}
 }

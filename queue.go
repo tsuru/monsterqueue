@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/garyburd/redigo/redis"
@@ -28,17 +29,53 @@ type Queue struct {
 	pool   *redis.Pool
 	tasks  map[string]Task
 	done   chan bool
+	wg     sync.WaitGroup
 }
 
 type QueueConfig struct {
-	Host            string
-	Port            int
-	Password        string
-	Db              string
-	PoolMaxIdle     int
-	KeyPrefix       string
+	Host      string // Redis host
+	Port      int    // Redis port
+	Password  string // Redis password (can be empty)
+	Db        int    // Redis db (default to 0)
+	KeyPrefix string // Prefix for all keys storede in Redis
+
+	// Maximum number of idle connections in redis connection pool, defaults
+	// to 10.
+	PoolMaxIdle int
+
+	// Timeout for idle connections in redis connection pool. If 0, idle connections
+	// won't be closed.
 	PoolIdleTimeout time.Duration
-	MaxBlockTime    time.Duration
+
+	// Wait time blocked in redis, waiting for new messages to arrive. This value
+	// should be greater than one second.
+	MaxBlockTime time.Duration
+}
+
+// Creates a new queue. The QueueConfig parameter will tell us how Redis to
+// connect to redis, among other things. This command will fail if the Redis
+// server is not available.
+//
+// Tasks registered in this queue instance will run when `ProcessLoop` is
+// called in this *same* instance.
+func NewQueue(conf QueueConfig) (*Queue, error) {
+	if conf.PoolMaxIdle == 0 {
+		conf.PoolMaxIdle = 10
+	}
+	q := &Queue{
+		config: &conf,
+		tasks:  make(map[string]Task),
+		done:   make(chan bool),
+	}
+	q.pool = &redis.Pool{
+		MaxIdle:     conf.PoolMaxIdle,
+		IdleTimeout: conf.PoolIdleTimeout,
+		Dial:        q.dial,
+	}
+	conn := q.pool.Get()
+	defer conn.Close()
+	_, err := conn.Do("PING")
+	return q, err
 }
 
 func (q *Queue) RegisterTask(task Task) error {
@@ -106,6 +143,7 @@ func (q *Queue) EnqueueWait(taskName string, params JobParams, timeout time.Dura
 
 func (q *Queue) ProcessLoop() {
 	for {
+		q.wg.Add(1)
 		err := q.waitForMessage()
 		if err != nil {
 			log.Debugf("error getting message from queue: %s", err.Error())
@@ -119,6 +157,11 @@ func (q *Queue) ProcessLoop() {
 
 func (q *Queue) Stop() {
 	close(q.done)
+	q.Wait()
+}
+
+func (q *Queue) Wait() {
+	q.wg.Wait()
 }
 
 func (q *Queue) RetrieveJob(jobId string) (*Job, error) {
@@ -168,21 +211,27 @@ func (q *Queue) waitForMessage() error {
 	}
 	rawJob, err := redis.Bytes(conn.Do("BRPOPLPUSH", q.enqueuedKey(), q.runningKey(), blockTime))
 	if err != nil {
+		q.wg.Done()
 		return err
 	}
 	job, err := newJobFromRaw(rawJob)
 	job.queue = q
 	if err != nil {
 		q.moveToResult(&job, nil, err)
+		q.wg.Done()
 		return err
 	}
 	task, _ := q.tasks[job.TaskName]
 	if task == nil {
 		err := fmt.Errorf("unregistered task name %q", job.TaskName)
 		q.moveToResult(&job, nil, err)
+		q.wg.Done()
 		return err
 	}
-	go task.Run(&job)
+	go func() {
+		defer q.wg.Done()
+		task.Run(&job)
+	}()
 	return nil
 }
 
@@ -258,23 +307,6 @@ func (q *Queue) dial() (redis.Conn, error) {
 	}
 	_, err = conn.Do("SELECT", q.config.Db)
 	return conn, err
-}
-
-func NewQueue(conf QueueConfig) (*Queue, error) {
-	q := &Queue{
-		config: &conf,
-		tasks:  make(map[string]Task),
-		done:   make(chan bool),
-	}
-	q.pool = &redis.Pool{
-		MaxIdle:     conf.PoolMaxIdle,
-		IdleTimeout: conf.PoolIdleTimeout,
-		Dial:        q.dial,
-	}
-	conn := q.pool.Get()
-	defer conn.Close()
-	_, err := conn.Do("PING")
-	return q, err
 }
 
 func randomString() string {
