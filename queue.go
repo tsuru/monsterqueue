@@ -266,6 +266,7 @@ func (q *Queue) publishResult(jobId string, resultData []byte) (int, error) {
 }
 
 func (q *Queue) key(base string) string {
+	base = fmt.Sprintf("redisqueue:%s", base)
 	if q.config.KeyPrefix != "" {
 		base = fmt.Sprintf("%s:%s", q.config.KeyPrefix, base)
 	}
