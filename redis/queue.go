@@ -18,7 +18,7 @@ import (
 	"github.com/tsuru/monsterqueue/log"
 )
 
-type QueueRedis struct {
+type queueRedis struct {
 	config *QueueConfig
 	pool   *redis.Pool
 	tasks  map[string]monsterqueue.Task
@@ -56,7 +56,7 @@ func NewQueue(conf QueueConfig) (monsterqueue.Queue, error) {
 	if conf.PoolMaxIdle == 0 {
 		conf.PoolMaxIdle = 10
 	}
-	q := &QueueRedis{
+	q := &queueRedis{
 		config: &conf,
 		tasks:  make(map[string]monsterqueue.Task),
 		done:   make(chan bool),
@@ -72,7 +72,7 @@ func NewQueue(conf QueueConfig) (monsterqueue.Queue, error) {
 	return q, err
 }
 
-func (q *QueueRedis) RegisterTask(task monsterqueue.Task) error {
+func (q *queueRedis) RegisterTask(task monsterqueue.Task) error {
 	if _, isRegistered := q.tasks[task.Name()]; isRegistered {
 		return errors.New("task already registered")
 	}
@@ -80,10 +80,10 @@ func (q *QueueRedis) RegisterTask(task monsterqueue.Task) error {
 	return nil
 }
 
-func (q *QueueRedis) Enqueue(taskName string, params monsterqueue.JobParams) (monsterqueue.Job, error) {
+func (q *queueRedis) Enqueue(taskName string, params monsterqueue.JobParams) (monsterqueue.Job, error) {
 	conn := q.pool.Get()
 	defer conn.Close()
-	j := JobRedis{
+	j := jobRedis{
 		Id:     randomString(),
 		Task:   taskName,
 		Params: params,
@@ -100,8 +100,8 @@ func (q *QueueRedis) Enqueue(taskName string, params monsterqueue.JobParams) (mo
 	return &j, nil
 }
 
-func (q *QueueRedis) EnqueueWait(taskName string, params monsterqueue.JobParams, timeout time.Duration) (monsterqueue.Job, error) {
-	j := JobRedis{
+func (q *queueRedis) EnqueueWait(taskName string, params monsterqueue.JobParams, timeout time.Duration) (monsterqueue.Job, error) {
+	j := jobRedis{
 		Id:     randomString(),
 		Task:   taskName,
 		Params: params,
@@ -135,7 +135,7 @@ func (q *QueueRedis) EnqueueWait(taskName string, params monsterqueue.JobParams,
 	return &j, monsterqueue.ErrQueueWaitTimeout
 }
 
-func (q *QueueRedis) ProcessLoop() {
+func (q *queueRedis) ProcessLoop() {
 	for {
 		q.wg.Add(1)
 		err := q.waitForMessage()
@@ -149,23 +149,23 @@ func (q *QueueRedis) ProcessLoop() {
 	}
 }
 
-func (q *QueueRedis) Stop() {
+func (q *queueRedis) Stop() {
 	close(q.done)
 	q.Wait()
 }
 
-func (q *QueueRedis) Wait() {
+func (q *queueRedis) Wait() {
 	q.wg.Wait()
 }
 
-func (q *QueueRedis) ResetStorage() error {
+func (q *queueRedis) ResetStorage() error {
 	conn := q.pool.Get()
 	defer conn.Close()
 	_, err := conn.Do("DEL", q.enqueuedKey(), q.resultKey(), q.runningKey())
 	return err
 }
 
-func (q *QueueRedis) RetrieveJob(jobId string) (monsterqueue.Job, error) {
+func (q *queueRedis) RetrieveJob(jobId string) (monsterqueue.Job, error) {
 	conn := q.pool.Get()
 	defer conn.Close()
 	rawResult, err := redis.Bytes(conn.Do("HGET", q.resultKey(), jobId))
@@ -179,7 +179,7 @@ func (q *QueueRedis) RetrieveJob(jobId string) (monsterqueue.Job, error) {
 	return &job, err
 }
 
-func (q *QueueRedis) receiveMessage(psc *redis.PubSubConn, key string) (chan []byte, error) {
+func (q *queueRedis) receiveMessage(psc *redis.PubSubConn, key string) (chan []byte, error) {
 	err := psc.Subscribe(key)
 	if err != nil {
 		return nil, err
@@ -203,7 +203,7 @@ func (q *QueueRedis) receiveMessage(psc *redis.PubSubConn, key string) (chan []b
 	return dataChan, nil
 }
 
-func (q *QueueRedis) waitForMessage() error {
+func (q *queueRedis) waitForMessage() error {
 	conn := q.pool.Get()
 	defer conn.Close()
 	blockTime := int(q.config.MaxBlockTime / time.Second)
@@ -239,7 +239,7 @@ func (q *QueueRedis) waitForMessage() error {
 	return nil
 }
 
-func (q *QueueRedis) moveToResult(job *JobRedis, result monsterqueue.JobResult, jobErr error) ([]byte, error) {
+func (q *queueRedis) moveToResult(job *jobRedis, result monsterqueue.JobResult, jobErr error) ([]byte, error) {
 	conn := q.pool.Get()
 	defer conn.Close()
 	err := conn.Send("MULTI")
@@ -263,13 +263,13 @@ func (q *QueueRedis) moveToResult(job *JobRedis, result monsterqueue.JobResult, 
 	return data, err
 }
 
-func (q *QueueRedis) publishResult(jobId string, resultData []byte) (int, error) {
+func (q *queueRedis) publishResult(jobId string, resultData []byte) (int, error) {
 	conn := q.pool.Get()
 	defer conn.Close()
 	return redis.Int(conn.Do("PUBLISH", q.resultPubSubKey(jobId), resultData))
 }
 
-func (q *QueueRedis) key(base string) string {
+func (q *queueRedis) key(base string) string {
 	base = fmt.Sprintf("monsterqueue:%s", base)
 	if q.config.KeyPrefix != "" {
 		base = fmt.Sprintf("%s:%s", q.config.KeyPrefix, base)
@@ -277,23 +277,23 @@ func (q *QueueRedis) key(base string) string {
 	return base
 }
 
-func (q *QueueRedis) enqueuedKey() string {
+func (q *queueRedis) enqueuedKey() string {
 	return q.key("enqueued")
 }
 
-func (q *QueueRedis) resultKey() string {
+func (q *queueRedis) resultKey() string {
 	return q.key("result")
 }
 
-func (q *QueueRedis) runningKey() string {
+func (q *queueRedis) runningKey() string {
 	return q.key("running")
 }
 
-func (q *QueueRedis) resultPubSubKey(jobId string) string {
+func (q *queueRedis) resultPubSubKey(jobId string) string {
 	return q.key(fmt.Sprintf("result:%s", jobId))
 }
 
-func (q *QueueRedis) dial() (redis.Conn, error) {
+func (q *queueRedis) dial() (redis.Conn, error) {
 	if q.config.Host == "" {
 		q.config.Host = "127.0.0.1"
 	}

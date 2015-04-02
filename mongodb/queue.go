@@ -17,7 +17,7 @@ import (
 	"gopkg.in/mgo.v2/bson"
 )
 
-type QueueMongoDB struct {
+type queueMongoDB struct {
 	config  *QueueConfig
 	session *mgo.Session
 	tasks   map[string]monsterqueue.Task
@@ -36,7 +36,7 @@ type QueueConfig struct {
 // Tasks registered in this queue instance will run when `ProcessLoop` is
 // called in this *same* instance.
 func NewQueue(conf QueueConfig) (monsterqueue.Queue, error) {
-	q := &QueueMongoDB{
+	q := &queueMongoDB{
 		config: &conf,
 		tasks:  make(map[string]monsterqueue.Task),
 		done:   make(chan bool),
@@ -54,7 +54,7 @@ func NewQueue(conf QueueConfig) (monsterqueue.Queue, error) {
 	return q, err
 }
 
-func (q *QueueMongoDB) tasksColl() *mgo.Collection {
+func (q *queueMongoDB) tasksColl() *mgo.Collection {
 	s := q.session.Copy()
 	name := "queue_tasks"
 	if q.config.CollectionPrefix != "" {
@@ -63,7 +63,7 @@ func (q *QueueMongoDB) tasksColl() *mgo.Collection {
 	return s.DB("").C(name)
 }
 
-func (q *QueueMongoDB) RegisterTask(task monsterqueue.Task) error {
+func (q *queueMongoDB) RegisterTask(task monsterqueue.Task) error {
 	if _, isRegistered := q.tasks[task.Name()]; isRegistered {
 		return errors.New("task already registered")
 	}
@@ -71,10 +71,10 @@ func (q *QueueMongoDB) RegisterTask(task monsterqueue.Task) error {
 	return nil
 }
 
-func (q *QueueMongoDB) Enqueue(taskName string, params monsterqueue.JobParams) (monsterqueue.Job, error) {
+func (q *queueMongoDB) Enqueue(taskName string, params monsterqueue.JobParams) (monsterqueue.Job, error) {
 	coll := q.tasksColl()
 	defer coll.Database.Session.Close()
-	j := JobMongoDB{
+	j := jobMongoDB{
 		Id:        bson.NewObjectId(),
 		Task:      taskName,
 		Params:    params,
@@ -88,10 +88,10 @@ func (q *QueueMongoDB) Enqueue(taskName string, params monsterqueue.JobParams) (
 	return &j, nil
 }
 
-func (q *QueueMongoDB) getDoneJob(jobId bson.ObjectId) (*JobMongoDB, error) {
+func (q *queueMongoDB) getDoneJob(jobId bson.ObjectId) (*jobMongoDB, error) {
 	coll := q.tasksColl()
 	defer coll.Database.Session.Close()
-	var resultJob JobMongoDB
+	var resultJob jobMongoDB
 	err := coll.Find(bson.M{"_id": jobId, "resultmessage.done": true}).One(&resultJob)
 	if err != nil {
 		if err == mgo.ErrNotFound {
@@ -102,8 +102,8 @@ func (q *QueueMongoDB) getDoneJob(jobId bson.ObjectId) (*JobMongoDB, error) {
 	return &resultJob, nil
 }
 
-func (q *QueueMongoDB) EnqueueWait(taskName string, params monsterqueue.JobParams, timeout time.Duration) (monsterqueue.Job, error) {
-	j := JobMongoDB{
+func (q *queueMongoDB) EnqueueWait(taskName string, params monsterqueue.JobParams, timeout time.Duration) (monsterqueue.Job, error) {
+	j := jobMongoDB{
 		Id:        bson.NewObjectId(),
 		Task:      taskName,
 		Params:    params,
@@ -117,7 +117,7 @@ func (q *QueueMongoDB) EnqueueWait(taskName string, params monsterqueue.JobParam
 	if err != nil {
 		return nil, err
 	}
-	result := make(chan *JobMongoDB)
+	result := make(chan *jobMongoDB)
 	quit := make(chan bool)
 	go func() {
 		for range time.Tick(200 * time.Millisecond) {
@@ -136,7 +136,7 @@ func (q *QueueMongoDB) EnqueueWait(taskName string, params monsterqueue.JobParam
 			}
 		}
 	}()
-	var resultJob *JobMongoDB
+	var resultJob *jobMongoDB
 	select {
 	case resultJob = <-result:
 	case <-time.After(timeout):
@@ -163,7 +163,7 @@ func (q *QueueMongoDB) EnqueueWait(taskName string, params monsterqueue.JobParam
 	return &j, monsterqueue.ErrQueueWaitTimeout
 }
 
-func (q *QueueMongoDB) ProcessLoop() {
+func (q *queueMongoDB) ProcessLoop() {
 	for {
 		q.wg.Add(1)
 		err := q.waitForMessage()
@@ -178,25 +178,25 @@ func (q *QueueMongoDB) ProcessLoop() {
 	}
 }
 
-func (q *QueueMongoDB) Stop() {
+func (q *queueMongoDB) Stop() {
 	close(q.done)
 	q.Wait()
 }
 
-func (q *QueueMongoDB) Wait() {
+func (q *queueMongoDB) Wait() {
 	q.wg.Wait()
 }
 
-func (q *QueueMongoDB) ResetStorage() error {
+func (q *queueMongoDB) ResetStorage() error {
 	coll := q.tasksColl()
 	defer coll.Database.Session.Close()
 	return coll.DropCollection()
 }
 
-func (q *QueueMongoDB) RetrieveJob(jobId string) (monsterqueue.Job, error) {
+func (q *queueMongoDB) RetrieveJob(jobId string) (monsterqueue.Job, error) {
 	coll := q.tasksColl()
 	defer coll.Database.Session.Close()
-	var job JobMongoDB
+	var job jobMongoDB
 	err := coll.FindId(bson.ObjectIdHex(jobId)).One(&job)
 	if err != nil {
 		return nil, err
@@ -204,10 +204,10 @@ func (q *QueueMongoDB) RetrieveJob(jobId string) (monsterqueue.Job, error) {
 	return &job, err
 }
 
-func (q *QueueMongoDB) waitForMessage() error {
+func (q *queueMongoDB) waitForMessage() error {
 	coll := q.tasksColl()
 	defer coll.Database.Session.Close()
-	var job JobMongoDB
+	var job jobMongoDB
 	hostname, _ := os.Hostname()
 	ownerData := jobOwnership{
 		Name:      fmt.Sprintf("%s_%d", hostname, os.Getpid()),
@@ -249,7 +249,7 @@ func (q *QueueMongoDB) waitForMessage() error {
 	return nil
 }
 
-func (q *QueueMongoDB) moveToResult(job *JobMongoDB, result monsterqueue.JobResult, jobErr error) error {
+func (q *queueMongoDB) moveToResult(job *jobMongoDB, result monsterqueue.JobResult, jobErr error) error {
 	var resultMsg jobResultMessage
 	resultMsg.Result = result
 	resultMsg.Timestamp = time.Now().UTC()
@@ -263,7 +263,7 @@ func (q *QueueMongoDB) moveToResult(job *JobMongoDB, result monsterqueue.JobResu
 	return coll.UpdateId(job.Id, bson.M{"$set": bson.M{"resultmessage": resultMsg, "owner.owned": false}})
 }
 
-func (q *QueueMongoDB) publishResult(job *JobMongoDB) (bool, error) {
+func (q *queueMongoDB) publishResult(job *jobMongoDB) (bool, error) {
 	coll := q.tasksColl()
 	defer coll.Database.Session.Close()
 	err := coll.Update(bson.M{"_id": job.Id, "waited": true}, bson.M{"$set": bson.M{"waited": false}})

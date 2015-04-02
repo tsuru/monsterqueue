@@ -17,28 +17,28 @@ type jobResultMessage struct {
 	Result monsterqueue.JobResult
 }
 
-type JobRedis struct {
+type jobRedis struct {
 	Id            string
 	Task          string
 	Params        monsterqueue.JobParams
 	rawJob        []byte
-	queue         *QueueRedis
+	queue         *queueRedis
 	resultMessage *jobResultMessage
 }
 
-func newJobFromRaw(data []byte) (JobRedis, error) {
-	job := JobRedis{
+func newJobFromRaw(data []byte) (jobRedis, error) {
+	job := jobRedis{
 		rawJob: data,
 	}
 	err := json.Unmarshal(data, &job)
 	return job, err
 }
 
-func newJobFromResultRaw(data []byte) (JobRedis, error) {
+func newJobFromResultRaw(data []byte) (jobRedis, error) {
 	var result jobResultMessage
 	err := json.Unmarshal(data, &result)
 	if err != nil {
-		return JobRedis{}, err
+		return jobRedis{}, err
 	}
 	job, err := newJobFromRaw(result.RawJob)
 	job.resultMessage = &result
@@ -49,23 +49,23 @@ func (m *jobResultMessage) Serialize() ([]byte, error) {
 	return json.Marshal(m)
 }
 
-func (m *jobResultMessage) Job() (JobRedis, error) {
+func (m *jobResultMessage) Job() (jobRedis, error) {
 	return newJobFromRaw(m.RawJob)
 }
 
-func (j *JobRedis) ID() string {
+func (j *jobRedis) ID() string {
 	return j.Id
 }
 
-func (j *JobRedis) Parameters() monsterqueue.JobParams {
+func (j *jobRedis) Parameters() monsterqueue.JobParams {
 	return j.Params
 }
 
-func (j *JobRedis) TaskName() string {
+func (j *jobRedis) TaskName() string {
 	return j.Task
 }
 
-func (j *JobRedis) Success(result monsterqueue.JobResult) (bool, error) {
+func (j *jobRedis) Success(result monsterqueue.JobResult) (bool, error) {
 	resultData, err := j.queue.moveToResult(j, result, nil)
 	if err != nil {
 		return false, err
@@ -74,7 +74,7 @@ func (j *JobRedis) Success(result monsterqueue.JobResult) (bool, error) {
 	return receivers > 0, err
 }
 
-func (j *JobRedis) Error(jobErr error) (bool, error) {
+func (j *jobRedis) Error(jobErr error) (bool, error) {
 	resultData, err := j.queue.moveToResult(j, nil, jobErr)
 	if err != nil {
 		return false, err
@@ -83,11 +83,11 @@ func (j *JobRedis) Error(jobErr error) (bool, error) {
 	return receivers > 0, err
 }
 
-func (j *JobRedis) Serialize() ([]byte, error) {
+func (j *jobRedis) Serialize() ([]byte, error) {
 	return json.Marshal(j)
 }
 
-func (j *JobRedis) Result() (monsterqueue.JobResult, error) {
+func (j *jobRedis) Result() (monsterqueue.JobResult, error) {
 	if j.resultMessage == nil {
 		return nil, monsterqueue.ErrNoJobResult
 	}

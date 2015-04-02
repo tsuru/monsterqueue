@@ -25,7 +25,7 @@ type jobOwnership struct {
 	Timestamp time.Time
 }
 
-type JobMongoDB struct {
+type jobMongoDB struct {
 	Id            bson.ObjectId `bson:"_id"`
 	Task          string
 	Params        monsterqueue.JobParams
@@ -33,22 +33,22 @@ type JobMongoDB struct {
 	Owner         jobOwnership
 	ResultMessage jobResultMessage
 	Waited        bool
-	queue         *QueueMongoDB
+	queue         *queueMongoDB
 }
 
-func (j *JobMongoDB) ID() string {
+func (j *jobMongoDB) ID() string {
 	return j.Id.Hex()
 }
 
-func (j *JobMongoDB) Parameters() monsterqueue.JobParams {
+func (j *jobMongoDB) Parameters() monsterqueue.JobParams {
 	return j.Params
 }
 
-func (j *JobMongoDB) TaskName() string {
+func (j *jobMongoDB) TaskName() string {
 	return j.Task
 }
 
-func (j *JobMongoDB) Success(result monsterqueue.JobResult) (bool, error) {
+func (j *jobMongoDB) Success(result monsterqueue.JobResult) (bool, error) {
 	err := j.queue.moveToResult(j, result, nil)
 	if err != nil {
 		return false, err
@@ -57,7 +57,7 @@ func (j *JobMongoDB) Success(result monsterqueue.JobResult) (bool, error) {
 	return received, err
 }
 
-func (j *JobMongoDB) Error(jobErr error) (bool, error) {
+func (j *jobMongoDB) Error(jobErr error) (bool, error) {
 	err := j.queue.moveToResult(j, nil, jobErr)
 	if err != nil {
 		return false, err
@@ -66,7 +66,7 @@ func (j *JobMongoDB) Error(jobErr error) (bool, error) {
 	return received, err
 }
 
-func (j *JobMongoDB) Result() (monsterqueue.JobResult, error) {
+func (j *jobMongoDB) Result() (monsterqueue.JobResult, error) {
 	if !j.ResultMessage.Done {
 		return nil, monsterqueue.ErrNoJobResult
 	}
