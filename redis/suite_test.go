@@ -1,8 +1,8 @@
-// Copyright 2015 redisqueue authors. All rights reserved.
+// Copyright 2015 monsterqueue authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package redisqueue_test
+package redis_test
 
 import (
 	"testing"
@@ -17,7 +17,7 @@ type S struct{}
 
 var _ = check.Suite(&S{})
 
-var redisKeyPrefix = "redisqueue-test-prefix"
+var redisKeyPrefix = "monsterqueue-test-prefix"
 
 func ClearRedisKeys(keysPattern string, c *check.C) {
 	redisConn, err := redis.Dial("tcp", "127.0.0.1:6379")
