@@ -237,7 +237,7 @@ func (q *queueMongoDB) waitForMessage() error {
 	}
 	task, _ := q.tasks[job.Task]
 	if task == nil {
-		err := fmt.Errorf("unregistered task name %q", job.TaskName)
+		err := fmt.Errorf("unregistered task name %q", job.Task)
 		q.moveToResult(&job, nil, err)
 		q.wg.Done()
 		return err

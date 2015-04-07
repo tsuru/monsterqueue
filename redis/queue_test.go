@@ -39,3 +39,9 @@ func (s *S) TestQueueEnqueueWaitError(c *check.C) {
 	c.Assert(err, check.IsNil)
 	monsterqueuetest.TestQueueEnqueueWaitError(queue, c)
 }
+
+func (s *S) TestQueueEnqueueWaitInvalidTaskName(c *check.C) {
+	queue, err := redis.NewQueue(redis.QueueConfig{KeyPrefix: redisKeyPrefix})
+	c.Assert(err, check.IsNil)
+	monsterqueuetest.TestQueueEnqueueWaitInvalidTaskName(queue, c)
+}

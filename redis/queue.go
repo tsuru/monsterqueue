@@ -221,14 +221,16 @@ func (q *queueRedis) waitForMessage() error {
 	job, err := newJobFromRaw(rawJob)
 	job.queue = q
 	if err != nil {
-		q.moveToResult(&job, nil, err)
+		data, _ := q.moveToResult(&job, nil, err)
+		q.publishResult(job.Id, data)
 		q.wg.Done()
 		return err
 	}
 	task, _ := q.tasks[job.Task]
 	if task == nil {
-		err := fmt.Errorf("unregistered task name %q", job.TaskName)
-		q.moveToResult(&job, nil, err)
+		err := fmt.Errorf("unregistered task name %q", job.Task)
+		data, _ := q.moveToResult(&job, nil, err)
+		q.publishResult(job.Id, data)
 		q.wg.Done()
 		return err
 	}
