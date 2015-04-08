@@ -5,43 +5,23 @@
 package redis_test
 
 import (
+	"testing"
+
 	"github.com/tsuru/monsterqueue/monsterqueuetest"
 	"github.com/tsuru/monsterqueue/redis"
 	"gopkg.in/check.v1"
 )
 
-func (s *S) TestQueueRegisterTask(c *check.C) {
-	queue, err := redis.NewQueue(redis.QueueConfig{KeyPrefix: redisKeyPrefix})
-	c.Assert(err, check.IsNil)
-	monsterqueuetest.TestQueueRegisterTask(queue, c)
-}
+var redisKeyPrefix = "monsterqueue-test-prefix"
 
-func (s *S) TestQueueEnqueueAndProcess(c *check.C) {
-	queue, err := redis.NewQueue(redis.QueueConfig{KeyPrefix: redisKeyPrefix})
-	c.Assert(err, check.IsNil)
-	monsterqueuetest.TestQueueEnqueueAndProcess(queue, c)
-}
-
-func (s *S) TestQueueEnqueueWaitAndProcess(c *check.C) {
-	queue, err := redis.NewQueue(redis.QueueConfig{KeyPrefix: redisKeyPrefix})
-	c.Assert(err, check.IsNil)
-	monsterqueuetest.TestQueueEnqueueWaitAndProcess(queue, c)
-}
-
-func (s *S) TestQueueEnqueueWaitTimeout(c *check.C) {
-	queue, err := redis.NewQueue(redis.QueueConfig{KeyPrefix: redisKeyPrefix})
-	c.Assert(err, check.IsNil)
-	monsterqueuetest.TestQueueEnqueueWaitTimeout(queue, c)
-}
-
-func (s *S) TestQueueEnqueueWaitError(c *check.C) {
-	queue, err := redis.NewQueue(redis.QueueConfig{KeyPrefix: redisKeyPrefix})
-	c.Assert(err, check.IsNil)
-	monsterqueuetest.TestQueueEnqueueWaitError(queue, c)
-}
-
-func (s *S) TestQueueEnqueueWaitInvalidTaskName(c *check.C) {
-	queue, err := redis.NewQueue(redis.QueueConfig{KeyPrefix: redisKeyPrefix})
-	c.Assert(err, check.IsNil)
-	monsterqueuetest.TestQueueEnqueueWaitInvalidTaskName(queue, c)
+func Test(t *testing.T) {
+	check.Suite(&monsterqueuetest.Suite{
+		SetUpTestFunc: func(s *monsterqueuetest.Suite, c *check.C) {
+			var err error
+			s.Queue, err = redis.NewQueue(redis.QueueConfig{KeyPrefix: redisKeyPrefix})
+			c.Assert(err, check.IsNil)
+			s.Queue.ResetStorage()
+		},
+	})
+	check.TestingT(t)
 }

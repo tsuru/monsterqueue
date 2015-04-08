@@ -13,6 +13,11 @@ import (
 	"gopkg.in/check.v1"
 )
 
+type Suite struct {
+	Queue         monsterqueue.Queue
+	SetUpTestFunc func(*Suite, *check.C)
+}
+
 type TestTask struct {
 	callCount int
 	acked     bool
@@ -39,25 +44,31 @@ func (t *TestTask) Name() string {
 	return "test-task"
 }
 
-func TestQueueRegisterTask(queue monsterqueue.Queue, c *check.C) {
+func (s *Suite) SetUpTest(c *check.C) {
+	if s.SetUpTestFunc != nil {
+		s.SetUpTestFunc(s, c)
+	}
+}
+
+func (s *Suite) TestQueueRegisterTask(c *check.C) {
 	task := &TestTask{}
-	err := queue.RegisterTask(task)
+	err := s.Queue.RegisterTask(task)
 	c.Assert(err, check.IsNil)
 }
 
-func TestQueueEnqueueAndProcess(queue monsterqueue.Queue, c *check.C) {
+func (s *Suite) TestQueueEnqueueAndProcess(c *check.C) {
 	task := &TestTask{}
-	err := queue.RegisterTask(task)
+	err := s.Queue.RegisterTask(task)
 	c.Assert(err, check.IsNil)
-	job, err := queue.Enqueue("test-task", monsterqueue.JobParams{"a": "b"})
+	job, err := s.Queue.Enqueue("test-task", monsterqueue.JobParams{"a": "b"})
 	c.Assert(err, check.IsNil)
-	queue.Stop()
-	queue.ProcessLoop()
-	queue.Wait()
+	s.Queue.Stop()
+	s.Queue.ProcessLoop()
+	s.Queue.Wait()
 	c.Assert(task.callCount, check.Equals, 1)
 	c.Assert(task.params, check.DeepEquals, monsterqueue.JobParams{"a": "b"})
 	c.Assert(task.acked, check.Equals, false)
-	job2, err := queue.RetrieveJob(job.ID())
+	job2, err := s.Queue.RetrieveJob(job.ID())
 	c.Assert(err, check.IsNil)
 	result, err := job2.Result()
 	c.Assert(err, check.IsNil)
@@ -67,9 +78,9 @@ func TestQueueEnqueueAndProcess(queue monsterqueue.Queue, c *check.C) {
 	c.Assert(job2.TaskName(), check.Equals, job.TaskName())
 }
 
-func TestQueueEnqueueWaitAndProcess(queue monsterqueue.Queue, c *check.C) {
+func (s *Suite) TestQueueEnqueueWaitAndProcess(c *check.C) {
 	task := &TestTask{}
-	err := queue.RegisterTask(task)
+	err := s.Queue.RegisterTask(task)
 	c.Assert(err, check.IsNil)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -77,17 +88,17 @@ func TestQueueEnqueueWaitAndProcess(queue monsterqueue.Queue, c *check.C) {
 	go func() {
 		defer wg.Done()
 		var err error
-		job, err = queue.EnqueueWait("test-task", monsterqueue.JobParams{"a": "b"}, 2*time.Second)
+		job, err = s.Queue.EnqueueWait("test-task", monsterqueue.JobParams{"a": "b"}, 2*time.Second)
 		c.Assert(err, check.IsNil)
 	}()
-	go func() { time.Sleep(2 * time.Second); queue.Stop() }()
-	queue.ProcessLoop()
+	go func() { time.Sleep(2 * time.Second); s.Queue.Stop() }()
+	s.Queue.ProcessLoop()
 	wg.Wait()
 	c.Assert(job.TaskName(), check.Equals, "test-task")
 	result, err := job.Result()
 	c.Assert(err, check.IsNil)
 	c.Assert(result, check.Equals, "my result")
-	queue.Wait()
+	s.Queue.Wait()
 	c.Assert(task.callCount, check.Equals, 1)
 	c.Assert(task.params, check.DeepEquals, monsterqueue.JobParams{"a": "b"})
 	c.Assert(task.acked, check.Equals, true)
@@ -95,9 +106,9 @@ func TestQueueEnqueueWaitAndProcess(queue monsterqueue.Queue, c *check.C) {
 	c.Assert(job.TaskName(), check.Equals, "test-task")
 }
 
-func TestQueueEnqueueWaitTimeout(queue monsterqueue.Queue, c *check.C) {
+func (s *Suite) TestQueueEnqueueWaitTimeout(c *check.C) {
 	task := &TestTask{}
-	err := queue.RegisterTask(task)
+	err := s.Queue.RegisterTask(task)
 	c.Assert(err, check.IsNil)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -105,29 +116,29 @@ func TestQueueEnqueueWaitTimeout(queue monsterqueue.Queue, c *check.C) {
 	go func() {
 		defer wg.Done()
 		var err error
-		job, err = queue.EnqueueWait("test-task", monsterqueue.JobParams{"sleep": true}, 500*time.Millisecond)
+		job, err = s.Queue.EnqueueWait("test-task", monsterqueue.JobParams{"sleep": true}, 500*time.Millisecond)
 		c.Assert(err, check.Equals, monsterqueue.ErrQueueWaitTimeout)
 	}()
-	go func() { time.Sleep(2 * time.Second); queue.Stop() }()
-	queue.ProcessLoop()
+	go func() { time.Sleep(2 * time.Second); s.Queue.Stop() }()
+	s.Queue.ProcessLoop()
 	wg.Wait()
 	c.Assert(job.TaskName(), check.Equals, "test-task")
 	_, err = job.Result()
 	c.Assert(err, check.Equals, monsterqueue.ErrNoJobResult)
-	queue.Wait()
+	s.Queue.Wait()
 	c.Assert(task.callCount, check.Equals, 1)
 	c.Assert(task.params, check.DeepEquals, monsterqueue.JobParams{"sleep": true})
 	c.Assert(task.acked, check.Equals, false)
-	job2, err := queue.RetrieveJob(job.ID())
+	job2, err := s.Queue.RetrieveJob(job.ID())
 	c.Assert(err, check.IsNil)
 	result, err := job2.Result()
 	c.Assert(err, check.IsNil)
 	c.Assert(result, check.Equals, "my result")
 }
 
-func TestQueueEnqueueWaitError(queue monsterqueue.Queue, c *check.C) {
+func (s *Suite) TestQueueEnqueueWaitError(c *check.C) {
 	task := &TestTask{}
-	err := queue.RegisterTask(task)
+	err := s.Queue.RegisterTask(task)
 	c.Assert(err, check.IsNil)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -135,33 +146,33 @@ func TestQueueEnqueueWaitError(queue monsterqueue.Queue, c *check.C) {
 	go func() {
 		defer wg.Done()
 		var err error
-		job, err = queue.EnqueueWait("test-task", monsterqueue.JobParams{"err": "fear is the mind-killer"}, 2*time.Second)
+		job, err = s.Queue.EnqueueWait("test-task", monsterqueue.JobParams{"err": "fear is the mind-killer"}, 2*time.Second)
 		c.Assert(err, check.IsNil)
 	}()
-	go func() { time.Sleep(2 * time.Second); queue.Stop() }()
-	queue.ProcessLoop()
+	go func() { time.Sleep(2 * time.Second); s.Queue.Stop() }()
+	s.Queue.ProcessLoop()
 	wg.Wait()
 	result, err := job.Result()
 	c.Assert(result, check.IsNil)
 	c.Assert(err, check.ErrorMatches, "fear is the mind-killer")
-	queue.Wait()
+	s.Queue.Wait()
 	c.Assert(task.callCount, check.Equals, 1)
 	c.Assert(task.params, check.DeepEquals, monsterqueue.JobParams{"err": "fear is the mind-killer"})
 	c.Assert(task.acked, check.Equals, true)
 }
 
-func TestQueueEnqueueWaitInvalidTaskName(queue monsterqueue.Queue, c *check.C) {
+func (s *Suite) TestQueueEnqueueWaitInvalidTaskName(c *check.C) {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	var job monsterqueue.Job
 	go func() {
 		defer wg.Done()
 		var err error
-		job, err = queue.EnqueueWait("invalid-task", monsterqueue.JobParams{"a": "b"}, 2*time.Second)
+		job, err = s.Queue.EnqueueWait("invalid-task", monsterqueue.JobParams{"a": "b"}, 2*time.Second)
 		c.Assert(err, check.IsNil)
 	}()
-	go func() { time.Sleep(2 * time.Second); queue.Stop() }()
-	queue.ProcessLoop()
+	go func() { time.Sleep(2 * time.Second); s.Queue.Stop() }()
+	s.Queue.ProcessLoop()
 	wg.Wait()
 	c.Assert(job.TaskName(), check.Equals, "invalid-task")
 	result, err := job.Result()
