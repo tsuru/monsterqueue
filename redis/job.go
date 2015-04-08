@@ -65,6 +65,10 @@ func (j *jobRedis) TaskName() string {
 	return j.Task
 }
 
+func (j *jobRedis) Queue() monsterqueue.Queue {
+	return j.queue
+}
+
 func (j *jobRedis) Success(result monsterqueue.JobResult) (bool, error) {
 	resultData, err := j.queue.moveToResult(j, result, nil)
 	if err != nil {

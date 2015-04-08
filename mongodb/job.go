@@ -48,6 +48,10 @@ func (j *jobMongoDB) TaskName() string {
 	return j.Task
 }
 
+func (j *jobMongoDB) Queue() monsterqueue.Queue {
+	return j.queue
+}
+
 func (j *jobMongoDB) Success(result monsterqueue.JobResult) (bool, error) {
 	err := j.queue.moveToResult(j, result, nil)
 	if err != nil {

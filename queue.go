@@ -22,6 +22,7 @@ type Job interface {
 	ID() string
 	Parameters() JobParams
 	TaskName() string
+	Queue() Queue
 }
 
 type Task interface {
