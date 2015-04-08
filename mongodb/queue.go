@@ -27,6 +27,7 @@ type queueMongoDB struct {
 
 type QueueConfig struct {
 	Url              string // MongoDB connection url
+	Database         string // MongoDB database name
 	CollectionPrefix string // Prefix for all collections created in MongoDB
 }
 
@@ -46,7 +47,7 @@ func NewQueue(conf QueueConfig) (monsterqueue.Queue, error) {
 	if err != nil {
 		return nil, err
 	}
-	db := q.session.DB("")
+	db := q.session.DB(conf.Database)
 	if db.Name == "test" {
 		q.session.Close()
 		return nil, errors.New("mongodb connection url must include database")
