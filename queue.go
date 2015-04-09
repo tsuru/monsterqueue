@@ -11,6 +11,7 @@ import (
 
 var ErrNoJobResult = errors.New("no result available")
 var ErrQueueWaitTimeout = errors.New("timeout waiting for result")
+var ErrNoJobResultSet = errors.New("task didn't set job result")
 
 type JobParams map[string]interface{}
 type JobResult interface{}

@@ -44,6 +44,18 @@ func (t *TestTask) Name() string {
 	return "test-task"
 }
 
+type NoReturnTask struct {
+	callCount int
+}
+
+func (t *NoReturnTask) Run(j monsterqueue.Job) {
+	t.callCount++
+}
+
+func (t *NoReturnTask) Name() string {
+	return "no-return-task"
+}
+
 func (s *Suite) SetUpTest(c *check.C) {
 	if s.SetUpTestFunc != nil {
 		s.SetUpTestFunc(s, c)
@@ -178,4 +190,23 @@ func (s *Suite) TestQueueEnqueueWaitInvalidTaskName(c *check.C) {
 	result, err := job.Result()
 	c.Assert(err, check.ErrorMatches, ".*unregistered.*invalid-task.")
 	c.Assert(result, check.IsNil)
+}
+
+func (s *Suite) TestQueueEnqueueNoReturnTask(c *check.C) {
+	task := &NoReturnTask{}
+	err := s.Queue.RegisterTask(task)
+	c.Assert(err, check.IsNil)
+	job, err := s.Queue.Enqueue("no-return-task", nil)
+	c.Assert(err, check.IsNil)
+	s.Queue.Stop()
+	s.Queue.ProcessLoop()
+	s.Queue.Wait()
+	c.Assert(task.callCount, check.Equals, 1)
+	job2, err := s.Queue.RetrieveJob(job.ID())
+	c.Assert(err, check.IsNil)
+	result, err := job2.Result()
+	c.Assert(err, check.DeepEquals, monsterqueue.ErrNoJobResultSet)
+	c.Assert(result, check.IsNil)
+	c.Assert(job2.ID(), check.Equals, job.ID())
+	c.Assert(job2.TaskName(), check.Equals, job.TaskName())
 }

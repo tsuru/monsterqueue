@@ -246,6 +246,9 @@ func (q *queueMongoDB) waitForMessage() error {
 	go func() {
 		defer q.wg.Done()
 		task.Run(&job)
+		if !job.ResultMessage.Done {
+			q.moveToResult(&job, nil, monsterqueue.ErrNoJobResultSet)
+		}
 	}()
 	return nil
 }

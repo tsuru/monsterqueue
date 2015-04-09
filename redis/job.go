@@ -24,6 +24,7 @@ type jobRedis struct {
 	rawJob        []byte
 	queue         *queueRedis
 	resultMessage *jobResultMessage
+	done          bool
 }
 
 func newJobFromRaw(data []byte) (jobRedis, error) {

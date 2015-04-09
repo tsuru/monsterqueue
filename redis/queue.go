@@ -237,6 +237,10 @@ func (q *queueRedis) waitForMessage() error {
 	go func() {
 		defer q.wg.Done()
 		task.Run(&job)
+		if !job.done {
+			data, _ := q.moveToResult(&job, nil, monsterqueue.ErrNoJobResultSet)
+			q.publishResult(job.Id, data)
+		}
 	}()
 	return nil
 }
@@ -262,6 +266,9 @@ func (q *queueRedis) moveToResult(job *jobRedis, result monsterqueue.JobResult, 
 		return nil, err
 	}
 	_, err = conn.Do("EXEC")
+	if err == nil {
+		job.done = true
+	}
 	return data, err
 }
 
