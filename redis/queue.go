@@ -84,16 +84,17 @@ func (q *queueRedis) Enqueue(taskName string, params monsterqueue.JobParams) (mo
 	conn := q.pool.Get()
 	defer conn.Close()
 	j := jobRedis{
-		Id:     randomString(),
-		Task:   taskName,
-		Params: params,
-		queue:  q,
+		Id:      randomString(),
+		Task:    taskName,
+		Params:  params,
+		Created: time.Now().UTC(),
+		queue:   q,
 	}
 	data, err := j.Serialize()
 	if err != nil {
 		return nil, err
 	}
-	_, err = conn.Do("LPUSH", q.enqueuedKey(), data)
+	err = q.lowEnqueue(j.Id, data)
 	if err != nil {
 		return nil, err
 	}
@@ -102,10 +103,11 @@ func (q *queueRedis) Enqueue(taskName string, params monsterqueue.JobParams) (mo
 
 func (q *queueRedis) EnqueueWait(taskName string, params monsterqueue.JobParams, timeout time.Duration) (monsterqueue.Job, error) {
 	j := jobRedis{
-		Id:     randomString(),
-		Task:   taskName,
-		Params: params,
-		queue:  q,
+		Id:      randomString(),
+		Task:    taskName,
+		Params:  params,
+		Created: time.Now().UTC(),
+		queue:   q,
 	}
 	pscConn, err := q.dial()
 	if err != nil {
@@ -121,9 +123,10 @@ func (q *queueRedis) EnqueueWait(taskName string, params monsterqueue.JobParams,
 	if err != nil {
 		return nil, err
 	}
-	conn := q.pool.Get()
-	defer conn.Close()
-	_, err = conn.Do("LPUSH", q.enqueuedKey(), data)
+	err = q.lowEnqueue(j.Id, data)
+	if err != nil {
+		return nil, err
+	}
 	select {
 	case resultData := <-resultChan:
 		j, err := newJobFromResultRaw(resultData)
@@ -179,6 +182,30 @@ func (q *queueRedis) RetrieveJob(jobId string) (monsterqueue.Job, error) {
 	return &job, err
 }
 
+func (q *queueRedis) lowEnqueue(id string, data []byte) error {
+	conn := q.pool.Get()
+	defer conn.Close()
+	err := conn.Send("MULTI")
+	if err != nil {
+		return err
+	}
+	result := jobResultMessage{RawJob: data}
+	dataRestult, _ := result.Serialize()
+	err = conn.Send("HSET", q.resultKey(), id, dataRestult)
+	if err != nil {
+		return err
+	}
+	err = conn.Send("LPUSH", q.enqueuedKey(), data)
+	if err != nil {
+		return err
+	}
+	_, err = conn.Do("EXEC")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (q *queueRedis) receiveMessage(psc *redis.PubSubConn, key string) (chan []byte, error) {
 	err := psc.Subscribe(key)
 	if err != nil {
@@ -226,6 +253,13 @@ func (q *queueRedis) waitForMessage() error {
 		q.wg.Done()
 		return err
 	}
+	err = q.saveJobEntry(&job)
+	if err != nil {
+		data, _ := q.moveToResult(&job, nil, err)
+		q.publishResult(job.Id, data)
+		q.wg.Done()
+		return err
+	}
 	task, _ := q.tasks[job.Task]
 	if task == nil {
 		err := fmt.Errorf("unregistered task name %q", job.Task)
@@ -245,6 +279,18 @@ func (q *queueRedis) waitForMessage() error {
 	return nil
 }
 
+func (q *queueRedis) saveJobEntry(job *jobRedis) error {
+	job.resultMessage = &jobResultMessage{RawJob: job.rawJob, Started: time.Now().UTC()}
+	data, _ := job.resultMessage.Serialize()
+	conn := q.pool.Get()
+	defer conn.Close()
+	_, err := conn.Do("HSET", q.resultKey(), job.Id, data)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (q *queueRedis) moveToResult(job *jobRedis, result monsterqueue.JobResult, jobErr error) ([]byte, error) {
 	conn := q.pool.Get()
 	defer conn.Close()
@@ -256,7 +302,10 @@ func (q *queueRedis) moveToResult(job *jobRedis, result monsterqueue.JobResult, 
 	if err != nil {
 		return nil, err
 	}
-	resultMsg := jobResultMessage{RawJob: job.rawJob, Result: result}
+	resultMsg := jobResultMessage{RawJob: job.rawJob, Result: result, Done: time.Now().UTC()}
+	if job.resultMessage != nil {
+		resultMsg.Started = job.resultMessage.Started
+	}
 	if jobErr != nil {
 		resultMsg.Error = jobErr.Error()
 	}

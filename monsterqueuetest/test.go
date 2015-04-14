@@ -88,6 +88,11 @@ func (s *Suite) TestQueueEnqueueAndProcess(c *check.C) {
 	c.Assert(job2.ID(), check.Equals, job.ID())
 	c.Assert(job2.Parameters(), check.DeepEquals, job.Parameters())
 	c.Assert(job2.TaskName(), check.Equals, job.TaskName())
+	status := job2.Status()
+	c.Assert(status.State, check.Equals, "done")
+	c.Assert(status.Enqueued.IsZero(), check.Equals, false)
+	c.Assert(status.Started.IsZero(), check.Equals, false)
+	c.Assert(status.Done.IsZero(), check.Equals, false)
 }
 
 func (s *Suite) TestQueueEnqueueWaitAndProcess(c *check.C) {
@@ -209,4 +214,39 @@ func (s *Suite) TestQueueEnqueueNoReturnTask(c *check.C) {
 	c.Assert(result, check.IsNil)
 	c.Assert(job2.ID(), check.Equals, job.ID())
 	c.Assert(job2.TaskName(), check.Equals, job.TaskName())
+}
+
+func (s *Suite) TestQueueStatusWithNoResult(c *check.C) {
+	task := &TestTask{}
+	err := s.Queue.RegisterTask(task)
+	c.Assert(err, check.IsNil)
+	job, err := s.Queue.Enqueue("test-task", monsterqueue.JobParams{"sleep": true})
+	c.Assert(err, check.IsNil)
+	status := job.Status()
+	c.Assert(status.State, check.Equals, "enqueued")
+	c.Assert(status.Enqueued.IsZero(), check.Equals, false)
+	c.Assert(status.Started.IsZero(), check.Equals, true)
+	c.Assert(status.Done.IsZero(), check.Equals, true)
+	result, err := job.Result()
+	c.Assert(err, check.DeepEquals, monsterqueue.ErrNoJobResult)
+	c.Assert(result, check.IsNil)
+	job2, err := s.Queue.RetrieveJob(job.ID())
+	c.Assert(err, check.IsNil)
+	c.Assert(job2.ID(), check.Equals, job.ID())
+	c.Assert(job2.TaskName(), check.Equals, job.TaskName())
+	status2 := job2.Status()
+	c.Assert(status2.State, check.DeepEquals, status.State)
+	c.Assert(status2.Enqueued.IsZero(), check.Equals, false)
+	c.Assert(status2.Started.IsZero(), check.Equals, true)
+	c.Assert(status2.Done.IsZero(), check.Equals, true)
+	s.Queue.Stop()
+	s.Queue.ProcessLoop()
+	time.Sleep(500 * time.Millisecond)
+	job3, err := s.Queue.RetrieveJob(job.ID())
+	c.Assert(err, check.IsNil)
+	status3 := job3.Status()
+	c.Assert(status3.State, check.Equals, "running")
+	c.Assert(status3.Enqueued.IsZero(), check.Equals, false)
+	c.Assert(status3.Started.IsZero(), check.Equals, false)
+	c.Assert(status3.Done.IsZero(), check.Equals, true)
 }

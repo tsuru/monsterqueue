@@ -49,6 +49,26 @@ type Job interface {
 	// Returns the Queue instance used by this Job. It's useful if the Task
 	// wants to Enqueue more jobs.
 	Queue() Queue
+
+	// Returns a struct with information about the job's state and timestamps
+	// for state changes.
+	Status() JobStatus
+}
+
+type JobStatus struct {
+
+	// Possible return values are: enqueued, running or done.
+	State string
+
+	// Time job was added to queue.
+	Enqueued time.Time
+
+	// Time job started executing, only available if state is "running" or
+	// "done".
+	Started time.Time
+
+	// Time job was finished, only available if state is "done".
+	Done time.Time
 }
 
 // The application using this library is responsible for implementing the Task

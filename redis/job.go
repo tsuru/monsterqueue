@@ -7,20 +7,24 @@ package redis
 import (
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/tsuru/monsterqueue"
 )
 
 type jobResultMessage struct {
-	RawJob []byte
-	Error  string
-	Result monsterqueue.JobResult
+	RawJob  []byte
+	Error   string
+	Result  monsterqueue.JobResult
+	Started time.Time
+	Done    time.Time
 }
 
 type jobRedis struct {
 	Id            string
 	Task          string
 	Params        monsterqueue.JobParams
+	Created       time.Time
 	rawJob        []byte
 	queue         *queueRedis
 	resultMessage *jobResultMessage
@@ -68,6 +72,24 @@ func (j *jobRedis) TaskName() string {
 
 func (j *jobRedis) Queue() monsterqueue.Queue {
 	return j.queue
+}
+
+func (j *jobRedis) Status() (status monsterqueue.JobStatus) {
+	status.Enqueued = j.Created
+	if j.resultMessage == nil {
+		status.State = "enqueued"
+		return
+	}
+	status.Started = j.resultMessage.Started
+	status.Done = j.resultMessage.Done
+	if status.Started.IsZero() {
+		status.State = "enqueued"
+	} else if status.Done.IsZero() {
+		status.State = "running"
+	} else {
+		status.State = "done"
+	}
+	return
 }
 
 func (j *jobRedis) Success(result monsterqueue.JobResult) (bool, error) {
