@@ -173,6 +173,9 @@ func (q *queueRedis) RetrieveJob(jobId string) (monsterqueue.Job, error) {
 	defer conn.Close()
 	rawResult, err := redis.Bytes(conn.Do("HGET", q.resultKey(), jobId))
 	if err != nil {
+		if err == redis.ErrNil {
+			return nil, monsterqueue.ErrNoSuchJob
+		}
 		return nil, err
 	}
 	if len(rawResult) == 0 {
@@ -180,6 +183,35 @@ func (q *queueRedis) RetrieveJob(jobId string) (monsterqueue.Job, error) {
 	}
 	job, err := newJobFromResultRaw(rawResult)
 	return &job, err
+}
+
+func (q *queueRedis) ListJobs() ([]monsterqueue.Job, error) {
+	conn := q.pool.Get()
+	defer conn.Close()
+	rawValues, err := redis.Values(conn.Do("HGETALL", q.resultKey()))
+	if err != nil {
+		return nil, err
+	}
+	if len(rawValues) == 0 {
+		return nil, nil
+	}
+	jobs := make([]monsterqueue.Job, len(rawValues)/2)
+	for i := range jobs {
+		byteVal := rawValues[i*2+1].([]byte)
+		job, err := newJobFromResultRaw(byteVal)
+		if err != nil {
+			return nil, err
+		}
+		jobs[i] = &job
+	}
+	return jobs, nil
+}
+
+func (q *queueRedis) DeleteJob(jobId string) error {
+	conn := q.pool.Get()
+	defer conn.Close()
+	_, err := conn.Do("HDEL", q.resultKey(), jobId)
+	return err
 }
 
 func (q *queueRedis) lowEnqueue(id string, data []byte) error {

@@ -200,9 +200,33 @@ func (q *queueMongoDB) RetrieveJob(jobId string) (monsterqueue.Job, error) {
 	var job jobMongoDB
 	err := coll.FindId(bson.ObjectIdHex(jobId)).One(&job)
 	if err != nil {
+		if err == mgo.ErrNotFound {
+			return nil, monsterqueue.ErrNoSuchJob
+		}
 		return nil, err
 	}
 	return &job, err
+}
+
+func (q *queueMongoDB) ListJobs() ([]monsterqueue.Job, error) {
+	coll := q.tasksColl()
+	defer coll.Database.Session.Close()
+	var mongodbJobs []jobMongoDB
+	err := coll.Find(nil).All(&mongodbJobs)
+	if err != nil {
+		return nil, err
+	}
+	jobs := make([]monsterqueue.Job, len(mongodbJobs))
+	for i := range mongodbJobs {
+		jobs[i] = &mongodbJobs[i]
+	}
+	return jobs, nil
+}
+
+func (q *queueMongoDB) DeleteJob(jobId string) error {
+	coll := q.tasksColl()
+	defer coll.Database.Session.Close()
+	return coll.RemoveId(bson.ObjectIdHex(jobId))
 }
 
 func (q *queueMongoDB) waitForMessage() error {

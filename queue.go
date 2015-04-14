@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+var ErrNoSuchJob = errors.New("no job found")
 var ErrNoJobResult = errors.New("no result available")
 var ErrQueueWaitTimeout = errors.New("timeout waiting for result")
 var ErrNoJobResultSet = errors.New("task didn't set job result")
@@ -63,7 +64,8 @@ type Job interface {
 
 type JobStatus struct {
 
-	// Possible return values are: JobStateEnqueued, JobStateRunning or JobStateDone.
+	// Possible return values are: JobStateEnqueued, JobStateRunning or
+	// JobStateDone.
 	State string
 
 	// Time job was added to queue.
@@ -130,4 +132,12 @@ type Queue interface {
 	// Completely erases storage removing enqueued, processing and finished
 	// tasks.
 	ResetStorage() error
+
+	// List all existing jobs
+	ListJobs() ([]Job, error)
+
+	// Delete a job from storage, please note that it's only safe to call this
+	// method if a job's state is JobStateDone. Otherwise, the behavior is
+	// undefined.
+	DeleteJob(jobId string) error
 }

@@ -6,6 +6,7 @@ package monsterqueuetest
 
 import (
 	"errors"
+	"sort"
 	"sync"
 	"time"
 
@@ -249,4 +250,50 @@ func (s *Suite) TestQueueStatusWithNoResult(c *check.C) {
 	c.Assert(status3.Enqueued.IsZero(), check.Equals, false)
 	c.Assert(status3.Started.IsZero(), check.Equals, false)
 	c.Assert(status3.Done.IsZero(), check.Equals, true)
+}
+
+type JobList []monsterqueue.Job
+
+func (l JobList) Len() int           { return len(l) }
+func (l JobList) Swap(i, j int)      { l[i], l[j] = l[j], l[i] }
+func (l JobList) Less(i, j int) bool { return l[i].Status().Enqueued.Before(l[j].Status().Enqueued) }
+
+func (s *Suite) TestQueueListJobs(c *check.C) {
+	task := &TestTask{}
+	err := s.Queue.RegisterTask(task)
+	c.Assert(err, check.IsNil)
+	job, err := s.Queue.Enqueue("test-task", monsterqueue.JobParams{"a": "b"})
+	c.Assert(err, check.IsNil)
+	s.Queue.Stop()
+	s.Queue.ProcessLoop()
+	s.Queue.Wait()
+	job2, err := s.Queue.Enqueue("test-task", monsterqueue.JobParams{"d": "e"})
+	c.Assert(err, check.IsNil)
+	jobs, err := s.Queue.ListJobs()
+	c.Assert(err, check.IsNil)
+	sort.Sort(JobList(jobs))
+	c.Assert(jobs, check.HasLen, 2)
+	c.Assert(jobs[0].ID(), check.Equals, job.ID())
+	c.Assert(jobs[0].Status().State, check.Equals, monsterqueue.JobStateDone)
+	c.Assert(jobs[0].Parameters(), check.DeepEquals, monsterqueue.JobParams{"a": "b"})
+	c.Assert(jobs[1].ID(), check.Equals, job2.ID())
+	c.Assert(jobs[1].Status().State, check.Equals, monsterqueue.JobStateEnqueued)
+	c.Assert(jobs[1].Parameters(), check.DeepEquals, monsterqueue.JobParams{"d": "e"})
+}
+
+func (s *Suite) TestQueueDeleteJob(c *check.C) {
+	task := &TestTask{}
+	err := s.Queue.RegisterTask(task)
+	c.Assert(err, check.IsNil)
+	job, err := s.Queue.Enqueue("test-task", monsterqueue.JobParams{"a": "b"})
+	c.Assert(err, check.IsNil)
+	s.Queue.Stop()
+	s.Queue.ProcessLoop()
+	s.Queue.Wait()
+	s.Queue.DeleteJob(job.ID())
+	_, err = s.Queue.RetrieveJob(job.ID())
+	c.Assert(err, check.Equals, monsterqueue.ErrNoSuchJob)
+	jobs, err := s.Queue.ListJobs()
+	c.Assert(err, check.IsNil)
+	c.Assert(jobs, check.HasLen, 0)
 }
