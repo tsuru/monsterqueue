@@ -13,6 +13,12 @@ var ErrNoJobResult = errors.New("no result available")
 var ErrQueueWaitTimeout = errors.New("timeout waiting for result")
 var ErrNoJobResultSet = errors.New("task didn't set job result")
 
+const (
+	JobStateEnqueued = "enqueued"
+	JobStateRunning  = "running"
+	JobStateDone     = "done"
+)
+
 type JobParams map[string]interface{}
 type JobResult interface{}
 
@@ -57,17 +63,17 @@ type Job interface {
 
 type JobStatus struct {
 
-	// Possible return values are: enqueued, running or done.
+	// Possible return values are: JobStateEnqueued, JobStateRunning or JobStateDone.
 	State string
 
 	// Time job was added to queue.
 	Enqueued time.Time
 
-	// Time job started executing, only available if state is "running" or
-	// "done".
+	// Time job started executing, only available if state is JobStateRunning or
+	// JobStateDone.
 	Started time.Time
 
-	// Time job was finished, only available if state is "done".
+	// Time job was finished, only available if state is JobStateDone.
 	Done time.Time
 }
 

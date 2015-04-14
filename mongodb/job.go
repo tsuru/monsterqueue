@@ -54,11 +54,11 @@ func (j *jobMongoDB) Queue() monsterqueue.Queue {
 
 func (j *jobMongoDB) Status() (status monsterqueue.JobStatus) {
 	if j.Owner.Owned {
-		status.State = "running"
+		status.State = monsterqueue.JobStateRunning
 	} else if j.ResultMessage.Done {
-		status.State = "done"
+		status.State = monsterqueue.JobStateDone
 	} else {
-		status.State = "enqueued"
+		status.State = monsterqueue.JobStateEnqueued
 	}
 	status.Enqueued = j.Timestamp
 	status.Started = j.Owner.Timestamp

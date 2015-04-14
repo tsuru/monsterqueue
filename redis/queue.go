@@ -336,7 +336,7 @@ func (q *queueRedis) key(base string) string {
 }
 
 func (q *queueRedis) enqueuedKey() string {
-	return q.key("enqueued")
+	return q.key(monsterqueue.JobStateEnqueued)
 }
 
 func (q *queueRedis) resultKey() string {
@@ -344,7 +344,7 @@ func (q *queueRedis) resultKey() string {
 }
 
 func (q *queueRedis) runningKey() string {
-	return q.key("running")
+	return q.key(monsterqueue.JobStateRunning)
 }
 
 func (q *queueRedis) resultPubSubKey(jobId string) string {

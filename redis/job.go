@@ -77,17 +77,17 @@ func (j *jobRedis) Queue() monsterqueue.Queue {
 func (j *jobRedis) Status() (status monsterqueue.JobStatus) {
 	status.Enqueued = j.Created
 	if j.resultMessage == nil {
-		status.State = "enqueued"
+		status.State = monsterqueue.JobStateEnqueued
 		return
 	}
 	status.Started = j.resultMessage.Started
 	status.Done = j.resultMessage.Done
 	if status.Started.IsZero() {
-		status.State = "enqueued"
+		status.State = monsterqueue.JobStateEnqueued
 	} else if status.Done.IsZero() {
-		status.State = "running"
+		status.State = monsterqueue.JobStateRunning
 	} else {
-		status.State = "done"
+		status.State = monsterqueue.JobStateDone
 	}
 	return
 }
