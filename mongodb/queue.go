@@ -43,6 +43,9 @@ func NewQueue(conf QueueConfig) (monsterqueue.Queue, error) {
 		done:   make(chan bool),
 	}
 	var err error
+	if conf.Url == "" {
+		return nil, errors.New("setting QueueConfig.Url is required")
+	}
 	q.session, err = mgo.Dial(conf.Url)
 	if err != nil {
 		return nil, err
@@ -50,7 +53,7 @@ func NewQueue(conf QueueConfig) (monsterqueue.Queue, error) {
 	db := q.session.DB(conf.Database)
 	if db.Name == "test" {
 		q.session.Close()
-		return nil, errors.New("mongodb connection url must include database")
+		return nil, errors.New("database name should be set in QueueConfig.Url or QueueConfig.Database")
 	}
 	return q, err
 }
