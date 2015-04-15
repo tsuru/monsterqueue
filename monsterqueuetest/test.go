@@ -252,12 +252,6 @@ func (s *Suite) TestQueueStatusWithNoResult(c *check.C) {
 	c.Assert(status3.Done.IsZero(), check.Equals, true)
 }
 
-type JobList []monsterqueue.Job
-
-func (l JobList) Len() int           { return len(l) }
-func (l JobList) Swap(i, j int)      { l[i], l[j] = l[j], l[i] }
-func (l JobList) Less(i, j int) bool { return l[i].Status().Enqueued.Before(l[j].Status().Enqueued) }
-
 func (s *Suite) TestQueueListJobs(c *check.C) {
 	task := &TestTask{}
 	err := s.Queue.RegisterTask(task)
@@ -271,7 +265,7 @@ func (s *Suite) TestQueueListJobs(c *check.C) {
 	c.Assert(err, check.IsNil)
 	jobs, err := s.Queue.ListJobs()
 	c.Assert(err, check.IsNil)
-	sort.Sort(JobList(jobs))
+	sort.Sort(monsterqueue.JobList(jobs))
 	c.Assert(jobs, check.HasLen, 2)
 	c.Assert(jobs[0].ID(), check.Equals, job.ID())
 	c.Assert(jobs[0].Status().State, check.Equals, monsterqueue.JobStateDone)

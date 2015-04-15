@@ -141,3 +141,9 @@ type Queue interface {
 	// undefined.
 	DeleteJob(jobId string) error
 }
+
+type JobList []Job
+
+func (l JobList) Len() int           { return len(l) }
+func (l JobList) Swap(i, j int)      { l[i], l[j] = l[j], l[i] }
+func (l JobList) Less(i, j int) bool { return l[i].Status().Enqueued.Before(l[j].Status().Enqueued) }
