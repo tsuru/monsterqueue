@@ -39,6 +39,7 @@ type jobData struct {
 	Enqueued string
 	Started  string
 	Done     string
+	Stack    string
 	Params   monsterqueue.JobParams
 }
 
@@ -139,6 +140,7 @@ func (h *monsterHandler) index(w http.ResponseWriter, r *http.Request) {
 			Started:  status.Started.Format(time.Stamp),
 			Done:     status.Done.Format(time.Stamp),
 			Params:   j.Parameters(),
+			Stack:    j.EnqueueStack(),
 		}
 		entries[i] = data
 	}

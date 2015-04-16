@@ -10,6 +10,17 @@ const (
 <html>
 <head>
     <title>MonsterWEB</title>
+<style>
+.extra {
+    display: none;
+}
+.line {
+    cursor: pointer;
+}
+.line:nth-child(4n + 1) {
+    background: #f2f2f2;
+}
+</style>
 </head>
 <body>
 
@@ -26,7 +37,7 @@ const (
 </thead>
 
 {{range .}}
-<tr>
+<tr class="line">
     <td>{{.Task}}</td>
     <td>{{.State}}</td>
     <td>{{.Success}}</td>
@@ -34,36 +45,36 @@ const (
     <td>{{.Enqueued}}</td>
     <td>{{.Started}}</td>
     <td>{{.Done}}</td>
-    <td>
+</tr>
+<tr class="extra">
+    <td colspan="7">
         {{if eq .State "done"}}
             <form action="/{{.ID}}/delete" method="POST" data-confirm="Are you sure you want to DELETE this job?"><button type="submit">delete</button></form>
             {{if not .Success}}
                 <form action="/{{.ID}}/retry" method="POST" data-confirm="Are you sure you want to REQUEUE this job?"><button type="submit">retry</button></form>
             {{end}}
         {{end}}
+        <div class="params">{{printf "%#v" .Params}}</div>
+        <div class="stack"><pre>{{.Stack}}</pre></div>
     </td>
-</tr>
-<tr>
-    <td colspan="7">{{printf "%#v" .Params}}</td>
 </tr>
 {{end}}
 
 </table>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
 <script>
-var confirmation = function(sel, msg) {
-    var els = document.querySelectorAll(sel);
-    for (var i = 0, len = els.length; i < len; ++i) {
-        (function(el) {
-            el.addEventListener("submit", function(ev) {
-                var msg = el.getAttribute("data-confirm");
-                if (!confirm(msg)) {
-                    ev.preventDefault();
-                }
-            }, false);
-        }(els[i]));
+$('body').on('click', '[data-confirm]', function(ev) {
+    var el = $(ev.currentTarget);
+    var msg = el.data('confirm');
+    if (!confirm(msg)) {
+        ev.preventDefault();
     }
-};
-confirmation("[data-confirm]");
+});
+
+$('body').on('click', '.line', function(ev) {
+    var el = $(ev.currentTarget);
+    el.next('.extra').toggle();
+});
 </script>
 </body>
 </html>
