@@ -18,6 +18,8 @@ const (
 	JobStateEnqueued = "enqueued"
 	JobStateRunning  = "running"
 	JobStateDone     = "done"
+
+	StackTraceLimit = 2048
 )
 
 type JobParams map[string]interface{}

@@ -204,7 +204,7 @@ func (q *queueRedis) DeleteJob(jobId string) error {
 }
 
 func (q *queueRedis) initialJob(taskName string, params monsterqueue.JobParams) jobRedis {
-	buf := make([]byte, 1024)
+	buf := make([]byte, monsterqueue.StackTraceLimit)
 	buf = buf[:runtime.Stack(buf, false)]
 	return jobRedis{
 		Id:      randomString(),

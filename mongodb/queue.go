@@ -222,7 +222,7 @@ func (q *queueMongoDB) DeleteJob(jobId string) error {
 }
 
 func (q *queueMongoDB) initialJob(taskName string, params monsterqueue.JobParams) jobMongoDB {
-	buf := make([]byte, 1024)
+	buf := make([]byte, monsterqueue.StackTraceLimit)
 	buf = buf[:runtime.Stack(buf, false)]
 	return jobMongoDB{
 		Id:        bson.NewObjectId(),
