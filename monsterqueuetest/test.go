@@ -291,3 +291,19 @@ func (s *Suite) TestQueueDeleteJob(c *check.C) {
 	c.Assert(err, check.IsNil)
 	c.Assert(jobs, check.HasLen, 0)
 }
+
+func (s *Suite) TestJobStack(c *check.C) {
+	task := &TestTask{}
+	err := s.Queue.RegisterTask(task)
+	c.Assert(err, check.IsNil)
+	job, err := s.Queue.Enqueue("test-task", monsterqueue.JobParams{"a": "b"})
+	c.Assert(err, check.IsNil)
+	c.Assert(job.EnqueueStack(), check.Matches, `(?s).*TestJobStack.*`)
+	s.Queue.Stop()
+	s.Queue.ProcessLoop()
+	s.Queue.Wait()
+	c.Assert(task.callCount, check.Equals, 1)
+	job2, err := s.Queue.RetrieveJob(job.ID())
+	c.Assert(err, check.IsNil)
+	c.Assert(job2.EnqueueStack(), check.Equals, job.EnqueueStack())
+}

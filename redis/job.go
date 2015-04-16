@@ -25,6 +25,7 @@ type jobRedis struct {
 	Task          string
 	Params        monsterqueue.JobParams
 	Created       time.Time
+	Stack         string
 	rawJob        []byte
 	queue         *queueRedis
 	resultMessage *jobResultMessage
@@ -90,6 +91,10 @@ func (j *jobRedis) Status() (status monsterqueue.JobStatus) {
 		status.State = monsterqueue.JobStateDone
 	}
 	return
+}
+
+func (j *jobRedis) EnqueueStack() string {
+	return j.Stack
 }
 
 func (j *jobRedis) Success(result monsterqueue.JobResult) (bool, error) {

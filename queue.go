@@ -60,6 +60,9 @@ type Job interface {
 	// Returns a struct with information about the job's state and timestamps
 	// for state changes.
 	Status() JobStatus
+
+	// Returns the current stack when queue.Enqueue() was called.
+	EnqueueStack() string
 }
 
 type JobStatus struct {

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"sync"
 	"time"
 
@@ -78,13 +79,7 @@ func (q *queueMongoDB) RegisterTask(task monsterqueue.Task) error {
 func (q *queueMongoDB) Enqueue(taskName string, params monsterqueue.JobParams) (monsterqueue.Job, error) {
 	coll := q.tasksColl()
 	defer coll.Database.Session.Close()
-	j := jobMongoDB{
-		Id:        bson.NewObjectId(),
-		Task:      taskName,
-		Params:    params,
-		Timestamp: time.Now().UTC(),
-		queue:     q,
-	}
+	j := q.initialJob(taskName, params)
 	err := coll.Insert(j)
 	if err != nil {
 		return nil, err
@@ -107,14 +102,8 @@ func (q *queueMongoDB) getDoneJob(jobId bson.ObjectId) (*jobMongoDB, error) {
 }
 
 func (q *queueMongoDB) EnqueueWait(taskName string, params monsterqueue.JobParams, timeout time.Duration) (monsterqueue.Job, error) {
-	j := jobMongoDB{
-		Id:        bson.NewObjectId(),
-		Task:      taskName,
-		Params:    params,
-		Timestamp: time.Now().UTC(),
-		Waited:    true,
-		queue:     q,
-	}
+	j := q.initialJob(taskName, params)
+	j.Waited = true
 	coll := q.tasksColl()
 	defer coll.Database.Session.Close()
 	err := coll.Insert(j)
@@ -230,6 +219,19 @@ func (q *queueMongoDB) DeleteJob(jobId string) error {
 	coll := q.tasksColl()
 	defer coll.Database.Session.Close()
 	return coll.RemoveId(bson.ObjectIdHex(jobId))
+}
+
+func (q *queueMongoDB) initialJob(taskName string, params monsterqueue.JobParams) jobMongoDB {
+	buf := make([]byte, 1024)
+	buf = buf[:runtime.Stack(buf, false)]
+	return jobMongoDB{
+		Id:        bson.NewObjectId(),
+		Task:      taskName,
+		Params:    params,
+		Timestamp: time.Now().UTC(),
+		Stack:     string(buf),
+		queue:     q,
+	}
 }
 
 func (q *queueMongoDB) waitForMessage() error {

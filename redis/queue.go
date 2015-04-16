@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"sync"
 	"time"
 
@@ -83,13 +84,7 @@ func (q *queueRedis) RegisterTask(task monsterqueue.Task) error {
 func (q *queueRedis) Enqueue(taskName string, params monsterqueue.JobParams) (monsterqueue.Job, error) {
 	conn := q.pool.Get()
 	defer conn.Close()
-	j := jobRedis{
-		Id:      randomString(),
-		Task:    taskName,
-		Params:  params,
-		Created: time.Now().UTC(),
-		queue:   q,
-	}
+	j := q.initialJob(taskName, params)
 	data, err := j.Serialize()
 	if err != nil {
 		return nil, err
@@ -102,13 +97,7 @@ func (q *queueRedis) Enqueue(taskName string, params monsterqueue.JobParams) (mo
 }
 
 func (q *queueRedis) EnqueueWait(taskName string, params monsterqueue.JobParams, timeout time.Duration) (monsterqueue.Job, error) {
-	j := jobRedis{
-		Id:      randomString(),
-		Task:    taskName,
-		Params:  params,
-		Created: time.Now().UTC(),
-		queue:   q,
-	}
+	j := q.initialJob(taskName, params)
 	pscConn, err := q.dial()
 	if err != nil {
 		return nil, err
@@ -212,6 +201,19 @@ func (q *queueRedis) DeleteJob(jobId string) error {
 	defer conn.Close()
 	_, err := conn.Do("HDEL", q.resultKey(), jobId)
 	return err
+}
+
+func (q *queueRedis) initialJob(taskName string, params monsterqueue.JobParams) jobRedis {
+	buf := make([]byte, 1024)
+	buf = buf[:runtime.Stack(buf, false)]
+	return jobRedis{
+		Id:      randomString(),
+		Task:    taskName,
+		Params:  params,
+		Created: time.Now().UTC(),
+		Stack:   string(buf),
+		queue:   q,
+	}
 }
 
 func (q *queueRedis) lowEnqueue(id string, data []byte) error {

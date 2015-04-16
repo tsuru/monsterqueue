@@ -33,6 +33,7 @@ type jobMongoDB struct {
 	Owner         jobOwnership
 	ResultMessage jobResultMessage
 	Waited        bool
+	Stack         string
 	queue         *queueMongoDB
 }
 
@@ -50,6 +51,10 @@ func (j *jobMongoDB) TaskName() string {
 
 func (j *jobMongoDB) Queue() monsterqueue.Queue {
 	return j.queue
+}
+
+func (j *jobMongoDB) EnqueueStack() string {
+	return j.Stack
 }
 
 func (j *jobMongoDB) Status() (status monsterqueue.JobStatus) {
