@@ -172,7 +172,7 @@ func (q *queueMongoDB) ProcessLoop() {
 }
 
 func (q *queueMongoDB) Stop() {
-	close(q.done)
+	q.done <- true
 	q.Wait()
 }
 

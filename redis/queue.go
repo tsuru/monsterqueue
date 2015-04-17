@@ -142,7 +142,7 @@ func (q *queueRedis) ProcessLoop() {
 }
 
 func (q *queueRedis) Stop() {
-	close(q.done)
+	q.done <- true
 	q.Wait()
 }
 
