@@ -17,7 +17,6 @@ import (
 	"github.com/codegangsta/cli"
 	"github.com/tsuru/monsterqueue"
 	"github.com/tsuru/monsterqueue/mongodb"
-	"github.com/tsuru/monsterqueue/redis"
 )
 
 var (
@@ -44,33 +43,14 @@ type jobData struct {
 }
 
 func initQueue(c *cli.Context) (monsterqueue.Queue, error) {
-	backend := c.String("backend")
-	var queue monsterqueue.Queue
-	var err error
-	if backend == "mongodb" {
-		conf := mongodb.QueueConfig{
-			Url:              c.String("mongodb-url"),
-			Database:         c.String("mongodb-database"),
-			CollectionPrefix: c.String("mongodb-prefix"),
-		}
-		queue, err = mongodb.NewQueue(conf)
-		if err != nil {
-			return nil, err
-		}
-	} else if backend == "redis" {
-		conf := redis.QueueConfig{
-			Host:      c.String("redis-host"),
-			Port:      c.Int("redis-port"),
-			Password:  c.String("redis-password"),
-			Db:        c.Int("redis-db"),
-			KeyPrefix: c.String("redis-prefix"),
-		}
-		queue, err = redis.NewQueue(conf)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		return nil, fmt.Errorf("invalid backend %q", backend)
+	conf := mongodb.QueueConfig{
+		Url:              c.String("mongodb-url"),
+		Database:         c.String("mongodb-database"),
+		CollectionPrefix: c.String("mongodb-prefix"),
+	}
+	queue, err := mongodb.NewQueue(conf)
+	if err != nil {
+		return nil, err
 	}
 	return queue, nil
 }
@@ -200,10 +180,6 @@ func main() {
 			Usage: "binding address",
 		},
 		cli.StringFlag{
-			Name:  "backend",
-			Usage: "chosen backend, mongodb or redis",
-		},
-		cli.StringFlag{
 			Name: "mongodb-url",
 		},
 		cli.StringFlag{
@@ -211,21 +187,6 @@ func main() {
 		},
 		cli.StringFlag{
 			Name: "mongodb-prefix",
-		},
-		cli.StringFlag{
-			Name: "redis-host",
-		},
-		cli.IntFlag{
-			Name: "redis-port",
-		},
-		cli.StringFlag{
-			Name: "redis-password",
-		},
-		cli.IntFlag{
-			Name: "redis-db",
-		},
-		cli.StringFlag{
-			Name: "redis-prefix",
 		},
 	}
 	app.Version = "0.0.1"

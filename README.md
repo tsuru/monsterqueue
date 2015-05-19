@@ -9,4 +9,4 @@ for instructions.
 
 ## Backends
 
-Supported queue backends are Redis and MongoDB.
+Supported queue backends are ~~Redis and~~ MongoDB.
