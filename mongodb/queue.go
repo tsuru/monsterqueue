@@ -244,7 +244,12 @@ func (q *queueMongoDB) waitForMessage() error {
 		Owned:     true,
 		Timestamp: time.Now().UTC(),
 	}
+	taskNames := make([]string, 0, len(q.tasks))
+	for taskName := range q.tasks {
+		taskNames = append(taskNames, taskName)
+	}
 	_, err := coll.Find(bson.M{
+		"task":               bson.M{"$in": taskNames},
 		"owner.owned":        false,
 		"resultmessage.done": false,
 	}).Sort("_id").Apply(mgo.Change{

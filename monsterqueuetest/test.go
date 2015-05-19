@@ -175,22 +175,22 @@ func (s *Suite) TestQueueEnqueueWaitError(c *check.C) {
 	c.Assert(task.acked, check.Equals, true)
 }
 
-func (s *Suite) TestQueueEnqueueWaitInvalidTaskName(c *check.C) {
+func (s *Suite) TestQueueEnqueueWaitUnregisteredTaskName(c *check.C) {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	var job monsterqueue.Job
 	go func() {
 		defer wg.Done()
 		var err error
-		job, err = s.Queue.EnqueueWait("invalid-task", monsterqueue.JobParams{"a": "b"}, 2*time.Second)
-		c.Assert(err, check.IsNil)
+		job, err = s.Queue.EnqueueWait("unregistered-task", monsterqueue.JobParams{"a": "b"}, 2*time.Second)
+		c.Assert(err, check.Equals, monsterqueue.ErrQueueWaitTimeout)
 	}()
 	go s.Queue.ProcessLoop()
 	s.Queue.Stop()
 	wg.Wait()
-	c.Assert(job.TaskName(), check.Equals, "invalid-task")
+	c.Assert(job.TaskName(), check.Equals, "unregistered-task")
 	result, err := job.Result()
-	c.Assert(err, check.ErrorMatches, ".*unregistered.*invalid-task.")
+	c.Assert(err, check.DeepEquals, monsterqueue.ErrNoJobResult)
 	c.Assert(result, check.IsNil)
 }
 
