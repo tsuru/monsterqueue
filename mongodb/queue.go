@@ -19,11 +19,12 @@ import (
 )
 
 type queueMongoDB struct {
-	config  *QueueConfig
-	session *mgo.Session
-	tasks   map[string]monsterqueue.Task
-	done    chan bool
-	wg      sync.WaitGroup
+	config   *QueueConfig
+	session  *mgo.Session
+	tasks    map[string]monsterqueue.Task
+	tasksMut sync.RWMutex
+	done     chan bool
+	wg       sync.WaitGroup
 }
 
 type QueueConfig struct {
@@ -69,6 +70,8 @@ func (q *queueMongoDB) tasksColl() *mgo.Collection {
 }
 
 func (q *queueMongoDB) RegisterTask(task monsterqueue.Task) error {
+	q.tasksMut.Lock()
+	defer q.tasksMut.Unlock()
 	if _, isRegistered := q.tasks[task.Name()]; isRegistered {
 		return errors.New("task already registered")
 	}
@@ -244,7 +247,9 @@ func (q *queueMongoDB) waitForMessage() error {
 		Owned:     true,
 		Timestamp: time.Now().UTC(),
 	}
+	q.tasksMut.RLock()
 	taskNames := make([]string, 0, len(q.tasks))
+	q.tasksMut.RUnlock()
 	for taskName := range q.tasks {
 		taskNames = append(taskNames, taskName)
 	}
@@ -270,7 +275,9 @@ func (q *queueMongoDB) waitForMessage() error {
 		q.wg.Done()
 		return err
 	}
+	q.tasksMut.RLock()
 	task, _ := q.tasks[job.Task]
+	q.tasksMut.RUnlock()
 	if task == nil {
 		err := fmt.Errorf("unregistered task name %q", job.Task)
 		q.moveToResult(&job, nil, err)
