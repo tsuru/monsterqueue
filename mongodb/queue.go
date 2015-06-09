@@ -48,10 +48,18 @@ func NewQueue(conf QueueConfig) (monsterqueue.Queue, error) {
 	if conf.Url == "" {
 		return nil, errors.New("setting QueueConfig.Url is required")
 	}
-	q.session, err = mgo.Dial(conf.Url)
+	dialInfo, err := mgo.ParseURL(conf.Url)
 	if err != nil {
 		return nil, err
 	}
+	dialInfo.FailFast = true
+	q.session, err = mgo.DialWithInfo(dialInfo)
+	if err != nil {
+		return nil, err
+	}
+	q.session.SetSyncTimeout(10 * time.Second)
+	q.session.SetSocketTimeout(1 * time.Minute)
+	q.session.SetMode(mgo.Monotonic, true)
 	db := q.session.DB(conf.Database)
 	if db.Name == "test" {
 		q.session.Close()
