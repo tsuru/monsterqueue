@@ -38,12 +38,12 @@ func Debugf(format string, args ...interface{}) {
 	lock.RLock()
 	defer lock.RUnlock()
 	if debug {
-		logger.Printf(fmt.Sprintf("[redis-queue][debug] %s", format), args...)
+		logger.Printf(fmt.Sprintf("[monsterqueue][debug] %s", format), args...)
 	}
 }
 
 func Errorf(format string, args ...interface{}) {
 	lock.RLock()
 	defer lock.RUnlock()
-	logger.Printf(fmt.Sprintf("[redis-queue][error] %s", format), args...)
+	logger.Printf(fmt.Sprintf("[monsterqueue][error] %s", format), args...)
 }
