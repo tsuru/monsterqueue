@@ -59,7 +59,6 @@ func NewQueue(conf QueueConfig) (monsterqueue.Queue, error) {
 	}
 	q.session.SetSyncTimeout(10 * time.Second)
 	q.session.SetSocketTimeout(1 * time.Minute)
-	q.session.SetMode(mgo.Monotonic, true)
 	db := q.session.DB(conf.Database)
 	if db.Name == "test" {
 		q.session.Close()
