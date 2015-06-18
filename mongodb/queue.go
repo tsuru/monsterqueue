@@ -256,10 +256,10 @@ func (q *queueMongoDB) waitForMessage() error {
 	}
 	q.tasksMut.RLock()
 	taskNames := make([]string, 0, len(q.tasks))
-	q.tasksMut.RUnlock()
 	for taskName := range q.tasks {
 		taskNames = append(taskNames, taskName)
 	}
+	q.tasksMut.RUnlock()
 	_, err := coll.Find(bson.M{
 		"task":               bson.M{"$in": taskNames},
 		"owner.owned":        false,
