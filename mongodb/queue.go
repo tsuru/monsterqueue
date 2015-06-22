@@ -131,7 +131,7 @@ func (q *queueMongoDB) EnqueueWait(taskName string, params monsterqueue.JobParam
 			}
 			job, err := q.getDoneJob(j.Id)
 			if err != nil {
-				log.Errorf("error trying to get job %s: %s", job.Id, err.Error())
+				log.Errorf("error trying to get job %s: %s", j.Id, err.Error())
 			}
 			if job != nil {
 				result <- job
