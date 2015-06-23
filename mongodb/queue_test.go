@@ -12,14 +12,14 @@ import (
 	"gopkg.in/check.v1"
 )
 
-var mongoTestUrl = "127.0.0.1:27017/queuetest"
-
 func Test(t *testing.T) {
 	check.Suite(&monsterqueuetest.Suite{
 		SetUpTestFunc: func(s *monsterqueuetest.Suite, c *check.C) {
 			var err error
-			s.Queue, err = mongodb.NewQueue(mongodb.QueueConfig{Url: mongoTestUrl})
+			s.Queue, err = mongodb.NewQueue(mongodb.QueueConfig{Url: "127.0.0.1:27017/queuetest"})
 			c.Assert(err, check.IsNil)
+		},
+		TearDownTestFunc: func(s *monsterqueuetest.Suite, c *check.C) {
 			s.Queue.ResetStorage()
 		},
 	})

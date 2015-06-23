@@ -193,6 +193,7 @@ func (q *queueMongoDB) Wait() {
 func (q *queueMongoDB) ResetStorage() error {
 	coll := q.tasksColl()
 	defer coll.Database.Session.Close()
+	defer q.session.Close()
 	return coll.DropCollection()
 }
 

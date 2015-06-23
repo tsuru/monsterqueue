@@ -15,8 +15,9 @@ import (
 )
 
 type Suite struct {
-	Queue         monsterqueue.Queue
-	SetUpTestFunc func(*Suite, *check.C)
+	Queue            monsterqueue.Queue
+	SetUpTestFunc    func(*Suite, *check.C)
+	TearDownTestFunc func(*Suite, *check.C)
 }
 
 type TestTask struct {
@@ -60,6 +61,12 @@ func (t *NoReturnTask) Name() string {
 func (s *Suite) SetUpTest(c *check.C) {
 	if s.SetUpTestFunc != nil {
 		s.SetUpTestFunc(s, c)
+	}
+}
+
+func (s *Suite) TearDownTest(c *check.C) {
+	if s.TearDownTestFunc != nil {
+		s.TearDownTestFunc(s, c)
 	}
 }
 
