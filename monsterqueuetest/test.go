@@ -6,6 +6,7 @@ package monsterqueuetest
 
 import (
 	"errors"
+	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -199,6 +200,38 @@ func (s *Suite) TestQueueEnqueueWaitUnregisteredTaskName(c *check.C) {
 	result, err := job.Result()
 	c.Assert(err, check.DeepEquals, monsterqueue.ErrNoJobResult)
 	c.Assert(result, check.IsNil)
+}
+
+func (s *Suite) TestQueueEnqueueWaitTimeoutRace(c *check.C) {
+	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(10))
+	task := &TestTask{}
+	err := s.Queue.RegisterTask(task)
+	c.Assert(err, check.IsNil)
+	enqueue := func() {
+		wg := sync.WaitGroup{}
+		for i := 0; i < 100; i++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				s.Queue.EnqueueWait("test-task", monsterqueue.JobParams{}, 0)
+			}(i)
+		}
+		wg.Wait()
+	}
+	go s.Queue.ProcessLoop()
+	done := make(chan bool)
+	go func() {
+		for i := 0; i < 10; i++ {
+			enqueue()
+		}
+		s.Queue.Stop()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		c.Fatal("Timeout after 10 seconds waiting for tasks")
+	}
 }
 
 func (s *Suite) TestQueueEnqueueNoReturnTask(c *check.C) {

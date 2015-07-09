@@ -123,12 +123,8 @@ func (q *queueMongoDB) EnqueueWait(taskName string, params monsterqueue.JobParam
 	result := make(chan *jobMongoDB)
 	quit := make(chan bool)
 	go func() {
-		for range time.Tick(200 * time.Millisecond) {
-			select {
-			case <-quit:
-				return
-			default:
-			}
+		defer close(result)
+		for {
 			job, err := q.getDoneJob(j.Id)
 			if err != nil {
 				log.Errorf("error trying to get job %s: %s", j.Id, err.Error())
@@ -137,16 +133,20 @@ func (q *queueMongoDB) EnqueueWait(taskName string, params monsterqueue.JobParam
 				result <- job
 				return
 			}
+			select {
+			case <-quit:
+				return
+			case <-time.After(200 * time.Millisecond):
+			}
 		}
 	}()
 	var resultJob *jobMongoDB
 	select {
 	case resultJob = <-result:
 	case <-time.After(timeout):
-		quit <- true
+		close(quit)
 	}
-	close(quit)
-	close(result)
+	resultJob = <-result
 	if resultJob != nil {
 		return resultJob, nil
 	}
