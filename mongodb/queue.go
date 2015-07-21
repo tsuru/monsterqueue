@@ -120,7 +120,7 @@ func (q *queueMongoDB) EnqueueWait(taskName string, params monsterqueue.JobParam
 	if err != nil {
 		return nil, err
 	}
-	result := make(chan *jobMongoDB)
+	result := make(chan *jobMongoDB, 1)
 	quit := make(chan bool)
 	go func() {
 		defer close(result)
