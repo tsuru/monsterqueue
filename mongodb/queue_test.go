@@ -6,6 +6,7 @@ package mongodb_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/tsuru/monsterqueue/mongodb"
 	"github.com/tsuru/monsterqueue/monsterqueuetest"
@@ -16,7 +17,7 @@ func Test(t *testing.T) {
 	check.Suite(&monsterqueuetest.Suite{
 		SetUpTestFunc: func(s *monsterqueuetest.Suite, c *check.C) {
 			var err error
-			s.Queue, err = mongodb.NewQueue(mongodb.QueueConfig{Url: "127.0.0.1:27017/queuetest"})
+			s.Queue, err = mongodb.NewQueue(mongodb.QueueConfig{Url: "127.0.0.1:27017/queuetest", PollingInterval: 10 * time.Millisecond})
 			c.Assert(err, check.IsNil)
 		},
 		TearDownTestFunc: func(s *monsterqueuetest.Suite, c *check.C) {

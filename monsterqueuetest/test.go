@@ -234,6 +234,28 @@ func (s *Suite) TestQueueEnqueueWaitTimeoutRace(c *check.C) {
 	}
 }
 
+func (s *Suite) TestQueueEnqueueWaitRace(c *check.C) {
+	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(10))
+	task := &TestTask{}
+	err := s.Queue.RegisterTask(task)
+	c.Assert(err, check.IsNil)
+	go s.Queue.ProcessLoop()
+	for j := 0; j < 10; j++ {
+		wg := sync.WaitGroup{}
+		for i := 0; i < 100; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				var err error
+				_, err = s.Queue.EnqueueWait("test-task", monsterqueue.JobParams{"a": "b"}, 10*time.Second)
+				c.Assert(err, check.IsNil)
+			}()
+		}
+		wg.Wait()
+	}
+	s.Queue.Stop()
+}
+
 func (s *Suite) TestQueueEnqueueNoReturnTask(c *check.C) {
 	task := &NoReturnTask{}
 	err := s.Queue.RegisterTask(task)

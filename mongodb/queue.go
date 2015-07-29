@@ -31,6 +31,7 @@ type QueueConfig struct {
 	Url              string // MongoDB connection url
 	Database         string // MongoDB database name
 	CollectionPrefix string // Prefix for all collections created in MongoDB
+	PollingInterval  time.Duration
 }
 
 // Creates a new queue. The QueueConfig parameter will tell us how to connect
@@ -101,7 +102,7 @@ func (q *queueMongoDB) getDoneJob(jobId bson.ObjectId) (*jobMongoDB, error) {
 	coll := q.tasksColl()
 	defer coll.Database.Session.Close()
 	var resultJob jobMongoDB
-	err := coll.Find(bson.M{"_id": jobId, "resultmessage.done": true}).One(&resultJob)
+	err := coll.Find(bson.M{"_id": jobId, "resultmessage.done": true, "waited": false}).One(&resultJob)
 	if err != nil {
 		if err == mgo.ErrNotFound {
 			return nil, nil
@@ -143,6 +144,7 @@ func (q *queueMongoDB) EnqueueWait(taskName string, params monsterqueue.JobParam
 	var resultJob *jobMongoDB
 	select {
 	case resultJob = <-result:
+		return resultJob, nil
 	case <-time.After(timeout):
 		close(quit)
 	}
@@ -167,14 +169,26 @@ func (q *queueMongoDB) EnqueueWait(taskName string, params monsterqueue.JobParam
 }
 
 func (q *queueMongoDB) ProcessLoop() {
+	interval := q.config.PollingInterval
+	if interval == 0 {
+		interval = 1 * time.Second
+	}
 	for {
 		q.wg.Add(1)
-		err := q.waitForMessage()
+		hasMessage, err := q.waitForMessage()
 		if err != nil {
 			log.Debugf("error getting message from queue: %s", err.Error())
 		}
+		if hasMessage {
+			select {
+			case <-q.done:
+				return
+			default:
+			}
+			continue
+		}
 		select {
-		case <-time.After(1 * time.Second):
+		case <-time.After(interval):
 		case <-q.done:
 			return
 		}
@@ -245,7 +259,7 @@ func (q *queueMongoDB) initialJob(taskName string, params monsterqueue.JobParams
 	}
 }
 
-func (q *queueMongoDB) waitForMessage() error {
+func (q *queueMongoDB) waitForMessage() (bool, error) {
 	coll := q.tasksColl()
 	defer coll.Database.Session.Close()
 	var job jobMongoDB
@@ -273,15 +287,15 @@ func (q *queueMongoDB) waitForMessage() error {
 	if err != nil {
 		q.wg.Done()
 		if err == mgo.ErrNotFound {
-			return nil
+			return false, nil
 		}
-		return err
+		return false, err
 	}
 	job.queue = q
 	if err != nil {
 		q.moveToResult(&job, nil, err)
 		q.wg.Done()
-		return err
+		return true, err
 	}
 	q.tasksMut.RLock()
 	task, _ := q.tasks[job.Task]
@@ -290,7 +304,7 @@ func (q *queueMongoDB) waitForMessage() error {
 		err := fmt.Errorf("unregistered task name %q", job.Task)
 		q.moveToResult(&job, nil, err)
 		q.wg.Done()
-		return err
+		return true, err
 	}
 	go func() {
 		defer q.wg.Done()
@@ -299,7 +313,7 @@ func (q *queueMongoDB) waitForMessage() error {
 			q.moveToResult(&job, nil, monsterqueue.ErrNoJobResultSet)
 		}
 	}()
-	return nil
+	return true, nil
 }
 
 func (q *queueMongoDB) moveToResult(job *jobMongoDB, result monsterqueue.JobResult, jobErr error) error {
