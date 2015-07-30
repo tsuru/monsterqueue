@@ -121,41 +121,27 @@ func (q *queueMongoDB) EnqueueWait(taskName string, params monsterqueue.JobParam
 	if err != nil {
 		return nil, err
 	}
-	result := make(chan *jobMongoDB)
-	quit := make(chan bool)
-	go func() {
-		defer close(result)
-		for {
-			job, err := q.getDoneJob(j.Id)
-			if err != nil {
-				log.Errorf("error trying to get job %s: %s", j.Id, err.Error())
-			}
-			if job != nil {
-				result <- job
-				return
-			}
-			select {
-			case <-quit:
-				return
-			case <-time.After(200 * time.Millisecond):
-			}
+	timeoutCh := time.After(timeout)
+out:
+	for {
+		job, err := q.getDoneJob(j.Id)
+		if err != nil {
+			log.Errorf("error trying to get job %s: %s", j.Id, err.Error())
 		}
-	}()
-	var resultJob *jobMongoDB
-	select {
-	case resultJob = <-result:
-		return resultJob, nil
-	case <-time.After(timeout):
-		close(quit)
-	}
-	resultJob = <-result
-	if resultJob != nil {
-		return resultJob, nil
+		if job != nil {
+			return job, nil
+		}
+		select {
+		case <-timeoutCh:
+			break out
+		case <-time.After(200 * time.Millisecond):
+		}
 	}
 	err = coll.Update(bson.M{
 		"_id":    j.Id,
 		"waited": true,
 	}, bson.M{"$set": bson.M{"waited": false}})
+	var resultJob *jobMongoDB
 	if err == mgo.ErrNotFound {
 		resultJob, err = q.getDoneJob(j.Id)
 	}
