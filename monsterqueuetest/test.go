@@ -339,12 +339,24 @@ func (s *Suite) TestQueueDeleteJob(c *check.C) {
 	c.Assert(err, check.IsNil)
 	go s.Queue.ProcessLoop()
 	s.Queue.Stop()
-	s.Queue.DeleteJob(job.ID())
+	err = s.Queue.DeleteJob(job.ID())
+	c.Assert(err, check.IsNil)
 	_, err = s.Queue.RetrieveJob(job.ID())
 	c.Assert(err, check.Equals, monsterqueue.ErrNoSuchJob)
 	jobs, err := s.Queue.ListJobs()
 	c.Assert(err, check.IsNil)
 	c.Assert(jobs, check.HasLen, 0)
+}
+
+func (s *Suite) TestQueueDeleteInvalidJob(c *check.C) {
+	err := s.Queue.DeleteJob("invalid")
+	c.Assert(err, check.NotNil)
+}
+
+func (s *Suite) TestQueueRetrieveInvalidJob(c *check.C) {
+	job, err := s.Queue.RetrieveJob("invalid")
+	c.Assert(err, check.NotNil)
+	c.Assert(job, check.IsNil)
 }
 
 func (s *Suite) TestJobStack(c *check.C) {
