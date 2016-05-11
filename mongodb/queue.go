@@ -74,7 +74,9 @@ func (q *queueMongoDB) tasksColl() *mgo.Collection {
 	if q.config.CollectionPrefix != "" {
 		name = fmt.Sprintf("%s_%s", q.config.CollectionPrefix, name)
 	}
-	return s.DB(q.config.Database).C(name)
+	c := s.DB(q.config.Database).C(name)
+	c.EnsureIndexKey("task", "owner.owned", "resultmessage.done", "_id")
+	return c
 }
 
 func (q *queueMongoDB) RegisterTask(task monsterqueue.Task) error {
